@@ -1,185 +1,172 @@
-# Program 5 — Reel Refiner
+# Project 3 — Video Processing
 
-**Date:** 2026-09-16
-**Path:** C — Collection (`01_Portfolio_Decisions.md` §3)
-**Repo:** `reel-refiner` (repo slugs are exempt from the naming document, `40_Naming_Convention.md` §7 — picked independently at spec time)
-**Language:** Python. Not constrained by the capture; chosen for subprocess glue around FFmpeg, whisper tooling and Topaz's `tvai_*` filters, and to keep the candidacy analyser's metric code in the same language as whatever tests it.
-**Effort class:** Below Thin (matches `01_Portfolio_Decisions.md` §2 and `06_Spec_Readiness.md` §1 — the effort-class agreement the doc checker enforces)
-**Source captures:** `15_Capture_P3_Processing.md` (all sections); `06_Spec_Readiness.md` §2 Program 5, §3 item 7 and item 8; `01_Portfolio_Decisions.md` entries 36, 43, 53, 81
+**Date:** 2026-09-05
+**Batch:** 3 (processing)
+**Path / Program:** Path C / Program 5
+**Status:** Elicitation complete. Shortest batch.
 
-## 1. What this is
+---
 
-Three small, independently runnable maintenance tools for staged video: a candidacy analyser
-that says whether a source is worth upscaling before hours are spent, a Topaz wrapper that
-upscales with encode settings that don't inflate output 5–10×, and a subtitle one-liner that
-produces gist-quality English subtitles and verifies they actually came out in English.
-Invoked manually and reactively. No queue, no scheduler, no shared state between the three.
+## Two structural findings that predate the questions
 
-## 2. What this is not
+**Processing creates variants.** Upscaling produces a second file of the same content at a different
+quality — a self-inflicted duplicate landing directly in Program 4's identity model. More usefully:
+**your own processing output is a provenance tier**, like curated-pack versus user-upload. Program 5's
+outputs must be marked as such so adjudication can distinguish "my upscale" from "someone else's
+re-encode."
 
-- **Not a job orchestrator or pipeline stage.** Entry 36 (`01_Portfolio_Decisions.md`) settled
-  this: reactive, targeted, maintenance-only. No "process the library" mode in v1.
-- **Not a library-wide quality survey.** The capture's own open question (`15_`, Open
-  questions #3) is whether the candidacy analyser belongs here or in Program 4 (Reel Intake,
-  the staging area between acquisition and the library) as a batch-wide check. Unresolved
-  either way — see §11. v1 keeps it here, invoked per file, partly because Program 4 is
-  blocked on D12 (does Stash already cover staging?) and a batch mode would be new scope on
-  top of an unresolved question.
-- **Not a demosaicing/decensoring tool.** Already out of scope for all of Project 3
-  (`04_Claude_Boundaries.md` §2); stated here only because "video enhancement" invites the
-  association. `04_` confirms the rest of Project 3, subtitles and upscaling, is unaffected.
-  **Note the numbering collision:** "Project 3" here is the elicitation-era project number for
-  video processing, which became this program. It is **not** Program 3 (Reel Projector, the
-  playback shell). `04_` §2 uses the same older numbering.
-- **Not a translation-quality tool.** The owner's own bar is gist quality (`15_`: *"loose
-  translation... the gist of speech is fine"*), not FunscriptToolbox's manual-review path.
-  Nothing here does contextual re-translation or human-in-the-loop correction.
-- **Not a provenance/reconciliation system.** Seam S5 (`09_Interface_Contracts.md`) — marking
-  processed output as "my upscale" for Program 4's adjudication — is real but deferred to
-  after Program 4 exists. See §5 and §13.
-- **Not a Topaz model recommendation engine.** Which `tvai_*` model suits heavily compressed
-  sources is open question 2 in `15_` and stays the owner's manual, run-time choice; the
-  wrapper accepts a model name, it doesn't pick one.
+**Subtitles are sidecars, like scripts.** Replace a video with a better copy and the subtitle must
+follow, be renamed, and stay aligned — the same reconciliation problem recorded for scripts in `12_`
+and `14_`. Re-encode frame-shift affects subtitles identically. **Misalignment detection is one
+capability serving two consumers**, not two features.
 
-## 3. Definition of done
+---
 
-Two commands the owner can run without re-learning anything (`15_`, Definition of done): one
-produces gist-quality English subtitles, one upscales without the 5–10× storage blowup, plus a
-way to know beforehand whether upscaling is worth doing at all.
+## Subtitles
 
-### The metric
+### What was done
 
-No single throughput number was elicited here, unlike Programs 4 and 7. "Return to use" for
-this program means the three frictions in `15_` stop recurring: (a) subtitle generation takes
-one command instead of the five-step manual workflow it replaces, (b) upscale output stays
-close to source size at a chosen CRF instead of 5–10×, (c) the analyser gives a verdict before
-hours are spent on an upscale that wasn't worth it.
+Once. Described as "quite a hassle." The workflow followed:
 
-## 4. Constraints
+1. Capture audio
+2. Machine transcription to text
+3. Google Translate to English
+4. Another LLM to clean up the translation
+5. Subtitle Edit to manually match it to the video
 
-### From `04_Claude_Boundaries.md`
-- **§1 applies to both the candidacy analyser and upscale result quality.** Claude cannot view
-  the video, so a "worth it?" verdict and any upscale-quality judgment must expose numbers
-  rather than rest on a visual read. That's why candidacy is Class A (computable) below, and
-  result quality stays Class B (human).
-- **§2's demosaicing carve-out doesn't touch this program**, confirmed in `04_` itself: *"The
-  rest of Project 3 is unaffected — subtitles and upscaling are entirely fine."*
+### The quality bar
 
-### From `01_Portfolio_Decisions.md` §5 — the trust rule
-Not applicable in the propose→confirm sense: D21 (`01_` entry 81) limits that rule to Programs
-4 and 7. This program doesn't place files into a managed library — it writes an output next
-to an input the owner named on the command line. No destructive path exists as long as an
-output name is always distinct from its input.
+> *"I would be fine with loose translation — the gist of speech is fine for this content."*
 
-### GPU / CUDA — carried in for this session
-**Assume any tool bundling its own CUDA libraries and predating 2025 is broken on the owner's
-GPU until proven otherwise.** Entry 53 (`01_`) records two instances of exactly this failure
-already: Faster-Whisper-XXL r192.3.4 and SyncPlayer 2.0.0.2's LibTorch, both against the
-owner's Blackwell/sm_120 card. Consequence for this spec: neither whisper candidate in §9 is
-depended on until milestone 1 proves it runs, and both need a `--device cpu` fallback path so
-a broken GPU build doesn't block the tool entirely — CPU is slower, but subtitle generation
-here isn't latency-sensitive.
+**This is the finding.** The workflow above is FunscriptToolbox's *high-quality* path, built around
+manual review checkpoints and contextual AI translation. The user does not need that standard. **The
+pain was self-inflicted by following a workflow optimised for a quality bar he doesn't require.**
 
-### Other
-Topaz Video AI: perpetual licence, version 7.1.5 (the final non-subscription release).
-`06_Spec_Readiness.md` item 8 reports this is already confirmed installed. No subscription.
+### The replacement
 
-## 5. Interfaces
+**Corrected 2026-09-07 by pre-work item 7.** The first version of this section named an FFmpeg command
+that does not do what it claimed.
 
-Per `09_Interface_Contracts.md`.
+Whisper performs speech-to-English in **one pass with timestamps**:
 
-| Direction | Seam | Carries | Status |
-|---|---|---|---|
-| 5 → 4 | S5 | Provenance claim ("this output is my upscale of that input") | **Deferred.** Program 4 (Reel Intake) is blocked on D12; invocation stays manual either way, and `09_` itself notes the trigger direction may never need a channel at all. Out of scope for v1 — see §13 |
+```
+whisper "clip.mp4" --model medium --language Japanese --task translate --output_format srt
+```
 
-No other program depends on Program 5's output format, and there is no inbound seam:
-invocation is manual by design (`15_`: *"not anywhere officially in the pipeline"*).
+That collapses steps 3, 4 and most of 5.
 
-## 6. Data model
+**FFmpeg 8.0's `whisper` filter cannot do this.** It has no `task` option — its full option set is
+`model`, `language`, `queue`, `use_gpu`, `gpu_device`, `destination`, `format` and four `vad_*`
+options. It transcribes in the source language only. The earlier claim that
+`ffmpeg -af whisper=...:task=translate` produced English subtitles was **wrong**, and the failure would
+have looked like success: a populated `.srt` full of Japanese.
 
-None. Three stateless CLI tools operating on files the owner names — no database, no
-persisted index, no shared state between runs. The candidacy analyser writes a report of
-computed metrics next to the input file for the owner to read; that's a report, not a data
-model this program owns.
+It also needs a build with `--enable-whisper` and GGML model files, so a stock FFmpeg likely can't run
+it at all.
 
-## 7. Features
+`whisper-cli` from whisper.cpp would be faster on GPU and should support translation — **verify with
+`whisper-cli -h`**.
 
-**Must** (from `15_`, Must-have vs nice-to-have)
-- Subtitle generation at gist quality, one command, **with output-language verification**
-- Upscale wrapper: owner-supplied model choice plus encode settings that don't inflate output 5–10×
-- Candidacy analyser: computable verdict on whether a source is worth upscaling, before hours are spent
+**P3.1 drops from a project to a one-liner plus a batch wrapper.**
+
+---
+
+## Upscaling
+
+### Current use
+
+Somewhat active, infrequent. Triggered **reactively** — some content exists only in a poor or heavily
+compressed version and the user wants it cleaned up. Time-consuming on large videos, so deliberately
+targeted.
+
+### Three frictions
+
+| # | Friction | Kind |
+|---|---|---|
+| 1 | Not knowledgeable on models and compression methods | **Config / knowledge** |
+| 2 | Output ends up 5–10× larger; unsure if it could be compressed smaller without quality loss | **Config** |
+| 3 | Unsure whether the upscale was worth doing at all | **Trust / evaluation** |
+
+### Topaz licensing — resolved
+
+The user holds a **perpetual licence for Topaz Video AI 7**, the last non-subscription version, with
+no preference between Topaz and open source, and openness to paying if the subscription is
+substantially better.
+
+- **7.1.5 is the final perpetual-licence version.** Check whether you're on it — free within what you own.
+- The current product is a separate, **subscription-only** app: Personal $299/yr, Pro $699/yr.
+- Perpetual holders keep their version, frozen. No new models.
+- **Adobe has agreed to acquire Topaz Labs in H2 2026.** Transaction pending, no announced changes to
+  existing licences. Live uncertainty.
+- Topaz remains the quality benchmark for desktop AI upscaling in 2026.
+
+**Recommendation: do not subscribe.** A subscription addresses none of the three frictions above. For a
+reactive, infrequent, targeted activity, $299/year buys newer models for a problem the user does not
+have.
+
+### The size explosion is a settings issue
+
+Topaz's default output targets high-bitrate intermediate formats. Because it **ships its own FFmpeg
+with the `tvai_*` filters**, upscale and sane re-encode can happen in one command — `tvai_up` into
+H.265 or AV1 at a chosen CRF. **This is the single highest-value fix in this batch after the subtitle
+one-liner**, and it is knowledge, not capability.
+
+---
+
+## Candidacy vs result — the sixth instance
+
+**Candidacy is computable, before spending hours.** Whether a source has recoverable detail: is it
+genuinely 1080p or a 480p upscale in a 1080p container, how much blocking and banding is present, how
+much high-frequency energy survives. For these sources the already-upscaled-once case is common, and
+catching it is pure saved time.
+
+**Result quality is not computable.** Upscaling deliberately changes the image, so similarity metrics
+against the source measure change rather than improvement. Human eyes required.
+
+Same shape as card triage (loadability vs aesthetics), video dedup (quality vs placement), and script
+quality (Class A vs Class B). **Sixth consecutive project.**
+
+---
+
+## Program 5 reframed
+
+> *"Not anywhere officially in the pipeline. Mostly a maintenance task when I feel I have time and
+> have some specific targets."*
+
+It is **not** a job orchestrator over the library. It is three small things:
+
+1. **Candidacy analyser** — is this worth upscaling?
+2. **Configured wrapper** — model choice plus sane encode settings.
+3. **Subtitle batch** — the one-liner, applied to a list.
+
+**Effort class drops below Thin.** Arguably the smallest deliverable in the portfolio.
+
+---
+
+## Must-have vs nice-to-have
+
+**Must**
+- Subtitle generation at gist quality, one command
+- Upscale wrapper with encode settings that don't inflate output 5–10×
+- Candidacy analysis before committing hours
 
 **Nice**
-- Batch queue — the capture itself doubts this is ever needed, since the activity is targeted
-- Provenance marking feeding Program 4 (Reel Intake) — deferred, §5 and §13
+- Batch queue (the activity is targeted, so a queue may never be needed)
+- Provenance marking of processed output feeding Program 4
 
-## 8. Quality measurement
+---
 
-| Class | What | How measured |
-|---|---|---|
-| A — computable | Candidacy: is this source genuinely high-resolution, or an upscaled-once source sitting in a bigger container; how much blocking/banding; how much high-frequency detail survives | Scalar metrics (an effective-resolution estimate, a blocking/banding score, a high-frequency energy ratio) computed over a sampled set of frames, reported with the number of frames sampled |
-| A — computable | Subtitle output is actually in the target language (English) | Language-detect the generated `.srt` text; report the detected language, a confidence score, and the number of subtitle cues examined |
-| A — computable | Upscale encode size | Output size vs source, as a ratio, alongside the model/CRF settings used to produce it |
-| B — human | Whether the upscale itself looks better | Owner's eyes. Not computable per `15_`: *"upscaling deliberately changes the image, so similarity metrics against the source measure change rather than improvement"* |
+## Definition of done
 
-**Denominator rule** (`08_Process_Adoption.md` §3 — formally reaching this program via entry
-81's side effect, which named this exact subtitle check). Both computable checks above must
-fail distinctly on zero: a subtitle file with zero cues is "examined nothing," not "language
-check passed"; a candidacy run that sampled zero frames is "broken," not "no defects found."
-This is the one general-quality rule this program inherits — see §10.
+**Two commands the user can run without re-learning anything**, producing subtitles at gist quality
+and upscales that don't inflate storage, with a way to know beforehand whether upscaling will help.
 
-## 9. Reference material
+---
 
-Per D18 (`01_` — reference implementation, not extraction): no Studio Loom code is reused
-here; this program has no reuse target there. Reference material is external tooling.
+## Open questions
 
-| Source | What to read | For |
-|---|---|---|
-| `06_Spec_Readiness.md` §3, item 7 status | Purfview Faster-Whisper-XXL's usage (`-l ja -m medium --task translate`) | Subtitle candidate #1 — documented as blocked on the owner's GPU with `CUBLAS_STATUS_NOT_SUPPORTED` until a newer release or `--device cpu` |
-| `15_Capture_P3_Processing.md`, Subtitles → The replacement | `whisper-cli -h` (whisper.cpp) | Subtitle candidate #2 — untested for `--task translate` support and for its own CUDA build's provenance; subject to the same until-proven-otherwise assumption, §4 |
-| Topaz Video AI 7.1.5, the `tvai_up` FFmpeg filter | Piping `tvai_up` straight into an H.265/AV1 encode at a chosen CRF, one command | The upscale wrapper — `15_` names this the fix for the 5–10× size problem |
-| `04_Claude_Boundaries.md` §1 | The instrumentation requirement for anything judged visually | Candidacy analyser's metric design |
-
-## 10. Process tier
-
-`08_Process_Adoption.md` §8 is explicit: **no process tier for this program.** Tier 0, Tier 1
-and Tier 2 ceremony would cost more than a two-day deliverable, which would itself violate the
-portfolio's governing principle (`01_` §1 — organisation at the cost of throughput is a net
-loss).
-
-**One exception, not an addition of ceremony:** the denominator rule reaches this program
-anyway, per entry 81's side effect. It's the mechanism behind the subtitle-language
-requirement carried into this session, not process overhead layered on top of it. See §8.
-
-## 11. Open decisions
-
-None block this spec. `06_Spec_Readiness.md` marks Program 5 **READY, gated on nothing.** Two
-items stay genuinely open without gating v1:
-- Whether the candidacy analyser eventually moves into Program 4 (Reel Intake) as a
-  library-wide survey (`15_`, Open questions #3) — revisit only if Program 4 unblocks on D12
-  and batch behaviour turns out to be wanted.
-- Which `tvai_*` model suits heavily compressed sources (`15_`, Open questions #2) — a
-  knowledge item, the owner's manual choice at run time, not a spec gate.
-
-## 12. First milestone
-
-Run the subtitle one-liner end to end on one real clip the owner has in a non-English source
-language, through to a verified-English `.srt`. Deliberately not the upscale wrapper, even
-though `06_` calls the candidacy analyser "the only genuinely new piece" — the subtitle path
-is where §4's GPU assumption is untested and where pre-work item 7 is currently blocked.
-Proving that whisper-cli (or a fixed Faster-Whisper-XXL) actually runs on the owner's GPU, or
-confirming CPU fallback is fast enough to live with, is the milestone that de-risks the rest of
-the program. It exercises the whole subtitle must-have and its language-verification check in
-one shot on a real case.
-
-## 13. Out of scope for v1
-
-- **Batch queue** — later, if ever; the capture doubts it's needed at all (§7).
-- **Provenance marking to Program 4** (S5, §5) — later, once Program 4 unblocks on D12 and
-  actually has somewhere to receive it; building the channel now means designing against a
-  program that doesn't exist yet.
-- **Candidacy-as-library-survey** — never decided either way (§11); v1 keeps it a per-file,
-  owner-invoked check.
-- **Topaz model selection logic** — never, by design; the owner's manual call permanently
-  (§4, §9).
-- **Demosaicing** — never, portfolio-wide (`04_` §2).
+1. Is the install already on 7.1.5?
+2. Which `tvai_*` model suits heavily compressed web sources specifically? Model selection is friction
+   #1 and is not answered by this session.
+3. Does the candidacy analyser belong in Program 5 or Program 4? It is arguably a library-wide quality
+   survey, not a per-job step.
