@@ -1,0 +1,15 @@
+# Sample media and generated output — never committed
+samples/
+out/
+*.srt
+*.mkv
+*.mp4
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Committed test fixtures are the exception to the media ignores above
+!tests/fixtures/**

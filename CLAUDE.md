@@ -1,0 +1,112 @@
+# CLAUDE.md — Reel Refiner
+
+Working rules for Claude Code sessions in this repository. Edit freely; this is the owner's file, not
+a generated one.
+
+## What this repo is
+
+Three small, independently runnable maintenance tools for staged video, in Python:
+
+1. **Subtitles** — one command from a non-English clip to gist-quality English `.srt`, with a check
+   that the output really is English.
+2. **Upscale** — a wrapper around Topaz Video AI 7.1.5's `tvai_up` FFmpeg filter, piped straight into
+   an H.265/AV1 encode at a chosen CRF so output doesn't inflate 5–10× over source.
+3. **Candidacy** — a computed verdict on whether a source is worth upscaling at all, before hours are
+   spent on one that wasn't.
+
+Invoked manually, one file at a time. **No queue, no scheduler, no shared state between the three.**
+
+## The contract
+
+**`docs/SPEC.md` governs.** It is the full specification, written before this repo existed.
+
+Read it completely before writing code, and do not silently diverge from it. Where it is wrong,
+incomplete, ambiguous, or contradicted by what actually happens on this machine, **write that down in
+`docs/SPEC-FEEDBACK.md` and tell me**. On a first build, that list is worth as much as the code — it is
+how the specification process gets corrected. Do not quietly work around a bad spec.
+
+`docs/CAPTURE.md` is the elicitation record the spec was written from. Read it when the spec cites it
+or when you need to know why something is the way it is.
+
+## Build one thing at a time
+
+**The first milestone is the subtitle path only**: one real non-English clip end to end, through to a
+verified-English `.srt`.
+
+Not the upscale wrapper. Not the candidacy analyser. The subtitle path goes first because that is where
+the GPU risk below is untested, and proving it either way de-risks everything else.
+
+**Stop when it passes and report.** Do not continue into the second tool.
+
+The test clip lives in `samples/`, which is not committed. Never write outputs there —
+write to `out/`, which is also not committed.
+
+## The GPU assumption — the main risk in this repo
+
+**Assume any tool that bundles its own CUDA libraries and predates 2025 is broken on this machine until
+proven otherwise.** The card is Blackwell / sm_120, and two separate applications have already failed
+on exactly this, one of them with `CUBLAS_STATUS_NOT_SUPPORTED`.
+
+Consequences, both required:
+
+- Neither whisper candidate is depended on until it has actually been observed to run here.
+- Both need a working **`--device cpu` fallback**, so a broken CUDA build cannot block the tool
+  outright. CPU is slower; subtitle generation is not latency-sensitive, so that is an acceptable
+  answer and sometimes the right one.
+
+Report which candidate ran, on which device, and how long it took. That result is part of the
+milestone, not an aside.
+
+## The denominator rule
+
+This repo carries **no process ceremony** (see below), with one exception, because it is the mechanism
+behind the subtitle requirement rather than overhead on top of it:
+
+**Any check that could report "clean" and "examined nothing" in the same words must carry its
+denominator and fail distinctly on zero.**
+
+The two concrete cases here:
+
+- A `.srt` with **zero cues** is *"examined nothing"*, never *"language check passed."* Report the
+  detected language, the confidence, and **the number of cues examined**.
+- A candidacy run that sampled **zero frames** is *"broken"*, never *"no defects found."* Report every
+  metric alongside **the number of frames sampled**.
+
+## Build states
+
+Track three states explicitly and never report one as another:
+
+- **built** — works and has been observed working
+- **built-partial** — works for some inputs, paths or devices; say which
+- **stub** — exists, does nothing real
+
+"Subtitles work" when only the CPU path has ever run is **built-partial**, and should say so.
+
+## File safety
+
+These tools write outputs next to inputs the owner names on the command line. There is no managed
+library and no destructive path — **as long as an output name is always distinct from its input.**
+Never write over a source file. Never move or rename one.
+
+## What this repo deliberately does not do
+
+Do not add any of these. Each was decided against, not overlooked:
+
+- **No batch or "process the library" mode.** The activity is reactive and targeted.
+- **No Topaz model selection logic.** The wrapper takes a model name as an argument; choosing it is
+  permanently the owner's call.
+- **No demosaicing or decensoring.** Out of scope portfolio-wide.
+- **No translation-quality work** — no contextual re-translation, no human-in-the-loop review. Gist
+  quality is the stated bar.
+- **No provenance marking or pipeline integration.** The program it would feed does not exist yet.
+- **No process ceremony.** No append-only decision log, no git hooks, no propose-then-confirm
+  confirmation flow. This is deliberate: the specification says this two-day deliverable would cost
+  more in ceremony than it is worth. Do not add it back.
+
+## Small conventions
+
+- **Python.** Chosen for subprocess glue around FFmpeg, the whisper tooling and Topaz's `tvai_*`
+  filters.
+- Each tool is **independently runnable** with no import-time dependency on the others.
+- Cite by identifier or heading — `docs/SPEC.md` §8, not a line number.
+- Keep the dependency list short. Prefer calling FFmpeg over wrapping it in a library.
