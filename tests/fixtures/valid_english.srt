@@ -1,0 +1,13 @@
+1
+00:00:00,000 --> 00:00:03,000
+Hello, and welcome to this talk about toys and creativity.
+
+2
+00:00:03,500 --> 00:00:08,000
+I have spent the last nine years designing new kinds of playthings
+that nobody had ever seen before.
+
+3
+00:00:08,500 --> 00:00:14,000
+Today I want to share the simple word game that changed how my team
+comes up with original ideas.

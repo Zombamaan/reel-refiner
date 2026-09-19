@@ -1,0 +1,43 @@
+# Reel Refiner — subtitle path dependencies. Python 3.12 venv (.venv/), not 3.14
+# (system default): 3.14's only available torch wheel here is CPU-only, and the
+# ML backends below need a Python version their wheels actually target.
+#
+# yt-dlp: instructions specified >=2026.08.19, but that release (also the newest
+# on PyPI as of 2026-09-19) still fails on TED's current page format
+# (github.com/yt-dlp/yt-dlp/issues/17507 — `playerData` parses as None). The fix
+# (PR #17510) is not in any PyPI release yet, only in master-builds nightlies.
+# Installed here: yt-dlp 2026.09.16.074918 from yt-dlp/yt-dlp-master-builds.
+# Re-pin to a PyPI release once one ships with the fix:
+#   pip install "yt-dlp>=2026.08.19"
+yt-dlp @ https://github.com/yt-dlp/yt-dlp-master-builds/releases/latest/download/yt-dlp.tar.gz
+
+# Language detection for the SRT verification check (SPEC.md §8). Pure Python,
+# no native deps, normalized per-class probabilities via LanguageIdentifier.
+py3langid==0.4.0
+
+# SRT parsing for the same check. Real subtitle files are messier than the
+# format spec suggests (TED's own VTT->SRT conversion produces a malformed
+# first cue with an embedded second timestamp line) — a maintained parser
+# tolerates that without crashing; a hand-rolled regex parser was tried first
+# and did not.
+srt==3.5.3
+
+# chrF scoring (Stage 5 backend-selection evidence only — does not gate the
+# milestone; see docs/SPEC-FEEDBACK.md).
+sacrebleu==2.6.0
+
+# The subtitle backend itself (SPEC.md §9 candidate #1, modernized — see
+# docs/SPEC-FEEDBACK.md #3 for why this one and not whisper-cli or
+# openai-whisper). Pulls in ctranslate2 4.8.2.
+faster-whisper==1.2.1
+
+# CUDA 12.x runtime for ctranslate2 (it links cublas64_12.dll / cudnn64_9.dll
+# specifically). The system driver is CUDA 13 and doesn't supply these as
+# loadable DLLs by itself; reel_subtitles.py finds these packages' bin/ dirs
+# at runtime and adds them to the DLL search path. Needed only for
+# --device cuda — --device cpu works without them (SPEC.md §4's fallback).
+nvidia-cublas-cu12
+nvidia-cudnn-cu12
+
+# Test runner for tests/.
+pytest

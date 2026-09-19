@@ -1,0 +1,1 @@
+WEBVTT-derived header with no actual cue blocks below it.
