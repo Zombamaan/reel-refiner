@@ -41,3 +41,13 @@ nvidia-cudnn-cu12
 
 # Test runner for tests/.
 pytest
+
+# scripts/fleurs_baseline.py only — a one-off numeric baseline, not a
+# dependency of the shipped reel_subtitles.py/srt_verify.py tool. `datasets`
+# streams google/fleurs without downloading a whole language's audio shard.
+# Audio decoding is disabled (Audio(decode=False)) and item["audio"]["bytes"]
+# is written straight through instead — it's already a real WAV container —
+# rather than pulling in `datasets`' default torchcodec decoder, which would
+# be a heavy, version-fragile addition for a script that never needs a
+# decoded array.
+datasets==5.0.1

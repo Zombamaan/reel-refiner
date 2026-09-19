@@ -8,6 +8,10 @@ worth stating — say so explicitly rather than leaving it blank.
 
 Format: one entry per finding, newest last.
 
+**The actual measured numbers from milestone 1 (chrF, timing overlap, the FLEURS baseline) are in
+`docs/MILESTONE-1-RESULTS.md`, not here** — this file is for defects found in the spec, that one is
+the results record.
+
 ---
 
 ## Findings
