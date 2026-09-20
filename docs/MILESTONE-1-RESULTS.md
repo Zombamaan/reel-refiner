@@ -9,7 +9,9 @@ console output from a session that's already over.
 - **Clip:** [Shimpei Takahashi's TED talk](https://www.ted.com/talks/shimpei_takahashi_play_this_word_game_to_come_up_with_original_ideas)
   (Japanese source audio, TED's own official English and Japanese subtitle tracks as reference)
 - **Backend:** `faster-whisper` (ctranslate2 4.8.2), `medium` model, `--task translate`
-- **Command:** `python reel_subtitles.py samples/2208.wav --out out --device {cuda,cpu} --model medium --language ja`
+- **Command:** `python reel_subtitles.py samples/2208/source.wav --device {cuda,cpu} --model medium --language ja`
+  (no `--out` needed — the tool detects a sample clip under `samples/` and writes to `out/2208/`
+  itself, device-suffixed; see "Reproducing these numbers" below)
 
 ## The §8 language check (`srt_verify.py`)
 
@@ -24,10 +26,21 @@ built-partial (CLAUDE.md's build-state rule). CUDA is ~6.5× faster than CPU on 
 The two devices produce slightly different output (94 vs 95 cues) — expected, since the CUDA path
 runs `float16` and the CPU path `int8`. Neither is the canonical result; both pass the §8 check.
 
-**Both runs write the same filename.** `reel_subtitles.py` names its output `<stem>.<lang>.srt` with
-no device component, so running CUDA then CPU overwrites the first result with the second. Keeping
-both requires renaming between runs — see "Reproducing these numbers" below. Recorded as a CLI gap
-in `docs/SPEC-FEEDBACK.md` finding #8.
+**Resolved:** both runs used to write the same filename, so CUDA then CPU silently overwrote the
+first result (`docs/SPEC-FEEDBACK.md` finding #8). `reel_subtitles.py` now detects a sample clip
+under `samples/` and writes `out/<clip>/<lang>.<device>.srt` — device-suffixed automatically, no
+manual renaming needed; both outputs now coexist.
+
+**CUDA is not exactly reproducible run to run; CPU is.** Re-running the identical CUDA command
+during later verification produced 92 cues / chrF 49.99 / 98.2% overlap — different from the 94 /
+51.11 / 97.1% recorded above from the original run, same model, same input. Re-running CPU
+reproduced 95 / 50.40 / 98.9% exactly, both times. This is consistent with known float16 kernel
+nondeterminism (ctranslate2/cuDNN algorithm selection can vary run to run); int8 CPU inference
+doesn't have that source of variance. **Practical implication:** treat any single CUDA run's exact
+cue count and chrF as one sample from a small distribution, not a fixed constant — the CPU numbers
+are the more citable ones if a single precise figure is needed. The table above is left as originally
+recorded (the actual first milestone run); this note exists so a future reproduction attempt that
+gets a slightly different CUDA number isn't mistaken for a regression.
 
 ## Translation-quality evidence (`scripts/score_srt.py`) — does not gate the milestone
 
@@ -78,20 +91,21 @@ changes.
 
 ## Reproducing these numbers
 
-All commands assume `.venv/` is set up per `requirements.txt` and `samples/2208.wav` /
-`samples/2208.en.srt` exist (fetched per `docs/SPEC-FEEDBACK.md` finding #6). `out/` is git-ignored,
-so no generated `.srt` is committed here.
+All commands assume `.venv/` is set up per `requirements.txt` and `samples/2208/source.wav` /
+`samples/2208/reference.en.srt` exist (fetched per `docs/SPEC-FEEDBACK.md` finding #6). Both
+`samples/` and `out/` are git-ignored, so none of this is committed here — see
+`docs/SPEC.md`/CLAUDE.md's `samples/<clip>/<purpose>.ext` and `out/<clip>/` conventions.
 
-Because both devices write to the same `out/2208.en.srt`, the CUDA result must be moved aside before
-the CPU run:
+No `--out` needed, and no manual renaming between runs — `reel_subtitles.py` detects the sample clip
+and device-suffixes automatically, so CUDA and CPU outputs coexist:
 
 ```
-python reel_subtitles.py samples/2208.wav --out out --device cuda --model medium --language ja
-mv out/2208.en.srt out/2208.en.cuda.srt
+python reel_subtitles.py samples/2208/source.wav --device cuda --model medium --language ja
+python reel_subtitles.py samples/2208/source.wav --device cpu  --model medium --language ja
 
-python reel_subtitles.py samples/2208.wav --out out --device cpu --model medium --language ja
-mv out/2208.en.srt out/2208.en.cpu.srt
-
-python scripts/score_srt.py out/2208.en.cuda.srt samples/2208.en.srt
-python scripts/score_srt.py out/2208.en.cpu.srt  samples/2208.en.srt
+python scripts/score_srt.py out/2208/en.cuda.srt samples/2208/reference.en.srt
+python scripts/score_srt.py out/2208/en.cpu.srt  samples/2208/reference.en.srt
 ```
+
+Each run also (re)writes `samples/2208/compare_in_beyond_compare.bat`, a one-click launcher opening
+Beyond Compare on the reference against whichever generated variant(s) exist so far.

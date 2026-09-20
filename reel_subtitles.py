@@ -13,9 +13,16 @@ pip-installed nvidia-cublas-cu12 / nvidia-cudnn-cu12 packages' bin directories
 to the DLL search path before touching CUDA. --device cpu always works
 without any of this and is the required fallback.
 
-File safety: writes only under the given --out directory (default out/),
-under a name derived from the input stem plus a language suffix — always
-distinct from the input, never in place of it, never a move or rename.
+File safety (CLAUDE.md): a **real clip** (anywhere outside this repo's
+samples/) gets its output written next to the input, `<stem>.<lang>.srt` —
+"these tools write outputs next to inputs the owner names on the command
+line." A **sample clip** (under samples/, dev-testing only) never writes
+there — CLAUDE.md's explicit carve-out — so it goes to out/<clip>/ instead,
+device-suffixed (`en.cuda.srt`, `en.cpu.srt`) so testing both devices
+against the same clip doesn't silently overwrite one result with the other.
+Explicit --out always overrides both defaults, plain `<stem>.<lang>.srt`
+naming, caller's own responsibility. An output name is always distinct from
+its input either way — never a move, never a rename, never in place.
 """
 from __future__ import annotations
 
@@ -29,9 +36,12 @@ from pathlib import Path
 
 import srt as srt_lib
 
+from dev_compare import write_compare_script
 from srt_verify import DEFAULT_THRESHOLD, verify_srt
 
 FFMPEG = os.environ.get("REEL_FFMPEG", "ffmpeg")
+SAMPLES_ROOT = (Path(__file__).parent / "samples").resolve()
+DEV_OUT_ROOT = (Path(__file__).parent / "out").resolve()
 
 
 def _add_cuda_runtime_to_path() -> None:
@@ -113,7 +123,7 @@ def segments_to_srt(segments) -> str:
 
 def run(
     input_path: str,
-    out_dir: str = "out",
+    out_dir: str | None = None,
     device: str = "cuda",
     model_size: str = "medium",
     source_language: str | None = None,
@@ -125,9 +135,27 @@ def run(
         print(f"usage error: no such file: {video_path}", file=sys.stderr)
         return 1
 
-    out_dir_path = Path(out_dir).resolve()
+    # Only true when out_dir wasn't given AND the input lives under this
+    # repo's samples/ — the one case CLAUDE.md says must never write output
+    # in place. Everything else (a real clip, or an explicit --out even for
+    # a sample clip) is the caller's own choice of location.
+    is_dev_default = out_dir is None and SAMPLES_ROOT in video_path.parents
+
+    if out_dir is not None:
+        out_dir_path = Path(out_dir).resolve()
+        srt_name = f"{video_path.stem}.{target_lang}.srt"
+    elif is_dev_default:
+        clip_name = video_path.parent.name
+        out_dir_path = DEV_OUT_ROOT / clip_name
+        srt_name = f"{target_lang}.{device}.srt"
+    else:
+        # Real clip, no --out given: write next to the input (CLAUDE.md's
+        # File Safety section), never into this repo's out/.
+        out_dir_path = video_path.parent
+        srt_name = f"{video_path.stem}.{target_lang}.srt"
+
     out_dir_path.mkdir(parents=True, exist_ok=True)
-    srt_path = out_dir_path / f"{video_path.stem}.{target_lang}.srt"
+    srt_path = out_dir_path / srt_name
     if srt_path.resolve() == video_path.resolve():
         # Unreachable given the suffix, but the file-safety rule (CLAUDE.md,
         # SPEC.md §4) is load-bearing enough to assert rather than assume.
@@ -159,6 +187,21 @@ def run(
         f"detected={result.detected_lang} confidence={result.confidence} "
         f"cjk_ratio={result.cjk_ratio} latin_ratio={result.latin_ratio}"
     )
+
+    if is_dev_default:
+        # Only where a reference transcript actually accompanies this
+        # sample clip — nothing to compare against otherwise.
+        reference_matches = sorted(video_path.parent.glob(f"reference.{target_lang}.*"))
+        if reference_matches:
+            script_path = write_compare_script(
+                clip_dir=video_path.parent,
+                reference_path=reference_matches[0],
+                candidate_dir=out_dir_path,
+                candidate_glob=f"{target_lang}.*.srt",
+            )
+            if script_path:
+                print(f"updated {script_path}")
+
     return result.exit_code
 
 
@@ -167,7 +210,9 @@ def main(argv=None) -> int:
         description="Generate a verified-English .srt from a non-English video clip."
     )
     parser.add_argument("input", help="path to the source video/audio file")
-    parser.add_argument("--out", default="out", help="output directory (default: out/)")
+    parser.add_argument("--out", default=None,
+                         help="output directory (default: next to the input for a real clip; "
+                              "out/<clip>/ when the input is under this repo's samples/)")
     parser.add_argument("--device", choices=["cuda", "cpu"], default="cuda",
                          help="SPEC.md §4 requires a working cpu fallback; default cuda")
     parser.add_argument("--model", default="medium",

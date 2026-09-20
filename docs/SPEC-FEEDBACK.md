@@ -140,4 +140,12 @@ Harmless for a single production run, awkward for the comparison runs the milest
 `--suffix` flag, so comparison runs don't collide — small, but it is the difference between the
 results record being reproducible by copy-paste and needing a footnote.
 
+**Resolved — the other direction from the suggested correction above.** Instead of updating §4 to
+match the code, `reel_subtitles.py` was updated to match §4: a real clip (anywhere outside this
+repo) now gets its output written next to the input, exactly as §4 states, with no `out/` involved
+at all. `out/` remains only as `CLAUDE.md`'s dev-testing carve-out for the repo's own `samples/`
+clips — now `out/<clip>/`, device-suffixed (`en.cuda.srt`, `en.cpu.srt`), which also closes this
+finding's second point: both device runs coexist automatically, no manual `mv` needed. See
+`docs/MILESTONE-1-RESULTS.md`'s "Reproducing these numbers" for the corrected commands.
+
 *Source: external spec review, not discovered by building.*
