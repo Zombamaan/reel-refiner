@@ -98,3 +98,46 @@ worked.
 **Suggested correction:** Not really a spec defect — this is upstream churn on a fast-moving
 dependency — but worth a standing note: "verify yt-dlp actually works against a live TED URL before
 trusting a version-number pin; PyPI can lag a fix that's already merged."
+
+### 7. §8 has no home for translation accuracy, and §2 says this isn't a translation-quality tool
+
+**Spec says:** §2, "What this is not": *"Not a translation-quality tool."* §8's Class A table has
+three computable rows — candidacy metrics, subtitle output language, upscale encode size. None of
+them is translation accuracy.
+**What actually happened:** The milestone produced two scoring tools the spec never asked for and
+has nowhere to put: `scripts/score_srt.py` (chrF + cue-timing overlap against a reference) and
+`scripts/fleurs_baseline.py` (corpus chrF against a parallel benchmark). Both were needed —
+without them "gist quality" (§2's own bar) is an assertion with no number behind it, and
+`04_Claude_Boundaries.md` §1 requires numbers exactly where a judgement can't be made by eye. But
+as the spec currently reads they are out of scope by §2 and unrecorded by §8 at the same time.
+**Suggested correction:** Decide one way in the spec, not in the repo. Either add a fourth Class A
+row to §8 — "translation is serviceable at the gist bar: document-level chrF against a reference
+translation, reported with the number of segments scored" — or state in §13 that accuracy scoring
+is out of scope and delete both scripts. §2's line is about not *improving* translation quality
+(no contextual re-translation, no human-in-the-loop); measuring it is a different thing, and the
+spec should say so rather than leaving the two readings to collide.
+
+*Source: external spec review, not discovered by building. Recorded here because this file is the
+channel back to the specification space, and the defect is in the spec rather than the code.*
+
+### 8. §4 says outputs are written next to the input; they are written to `out/`
+
+**Spec says:** §4, the trust rule: *"it writes an output next to an input the owner named on the
+command line. No destructive path exists as long as an output name is always distinct from its
+input."*
+**What actually happened:** `CLAUDE.md` instructs the opposite — *"Never write outputs there
+[`samples/`] — write to `out/`"* — and `reel_subtitles.py` implements `CLAUDE.md`, defaulting to
+`--out out`. The no-overwrite guarantee §4 actually cares about holds either way (the output path
+is asserted distinct from the input before anything is written), so nothing unsafe happened. But
+the spec and the repo's working rules state different destinations for the same file.
+
+A second, smaller consequence of the same area: the output name is `<stem>.<lang>.srt` with no
+device component, so `--device cuda` and `--device cpu` runs of the same clip overwrite each other.
+Harmless for a single production run, awkward for the comparison runs the milestone itself needed —
+`docs/MILESTONE-1-RESULTS.md` documents the manual `mv` this forced.
+**Suggested correction:** Update §4 to say outputs go to a caller-specified directory defaulting to
+`out/`, never in place of the input. Optionally add a device component to the output name, or a
+`--suffix` flag, so comparison runs don't collide — small, but it is the difference between the
+results record being reproducible by copy-paste and needing a footnote.
+
+*Source: external spec review, not discovered by building.*
