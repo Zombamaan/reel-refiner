@@ -154,6 +154,14 @@ Do not add any of these. Each was decided against, not overlooked:
   confirmation flow. This is deliberate: the specification says this two-day deliverable would cost
   more in ceremony than it is worth. Do not add it back.
 
+  **Help documentation is not ceremony, and `README.md` is not covered by this rule.** The
+  distinction the owner drew: ceremony is record-keeping *about* the work — logs, hooks, approval
+  gates — and its cost is paid on every change. Help is documentation *for using* the work, written
+  once and read when someone needs to run something. `README.md` exists to answer "what are these
+  three tools and how do I run them," which `docs/SPEC.md` (a specification) and
+  `docs/CAPTURE.md` (an elicitation record) are the wrong shape to answer. Keep it current; don't
+  delete it as overhead.
+
 ## Small conventions
 
 - **Python.** Chosen for subprocess glue around FFmpeg, the whisper tooling and Topaz's `tvai_*`

@@ -96,9 +96,32 @@ milestone 1 proves it runs, and both need a `--device cpu` fallback path so a br
 doesn't block the tool entirely — CPU is slower, but subtitle generation here isn't
 latency-sensitive.
 
+**A third failure signature, added by milestone 2** (`docs/SPEC-FEEDBACK.md` finding #15): a GPU
+filter can crash the whole process on input it considers degenerate, with no error at all. Topaz's
+`tvai_up` **segfaults** (exit 139, empty stderr) on fewer than **4 input frames** — bisected on this
+machine: 1, 2 and 3 frames all segfault identically, 4 and above run cleanly. Practical rule: **never
+probe or preflight-check a `tvai_*` filter with fewer than a handful of frames**, or an upstream
+limitation will read as this repo's own crash. `reel_upscale.py`'s preflight smoke test uses 8 frames
+to stay clear with margin. The three signatures to watch for are now: a hard `CUBLAS_STATUS_NOT_SUPPORTED`
+crash, a silent 10×-slower-than-CPU degradation while claiming CUDA, and a segfault on degenerate input.
+
 ### Other
 Topaz Video AI: perpetual licence, version 7.1.5 (the final non-subscription release).
 `06_Spec_Readiness.md` item 8 reports this is already confirmed installed. No subscription.
+
+**Topaz environment, added by milestone 2** (`docs/SPEC-FEEDBACK.md` finding #11) — none of this was
+recorded anywhere before building, and the first two are hard requirements, not preferences:
+
+- **`TVAI_MODEL_DIR` must be set** to `C:\ProgramData\Topaz Labs LLC\Topaz Video AI\models`, or
+  `tvai_up` fails immediately with `Model not found`, before any GPU work. The correct value was
+  recoverable only from Topaz's own log file (`%APPDATA%\Topaz Labs LLC\Topaz Video AI\logs\*.tzlog`,
+  the line `TVAI_MODEL_DIR, veaiDataFolder …`). `TVAI_MODEL_DATA_DIR` is set to the same path
+  alongside it — present in every working invocation, not independently confirmed as required.
+- **Two Topaz installs can coexist** on one machine: the spec'd perpetual `Topaz Video AI` (7.1.5) and
+  a separate subscription-era `Topaz Video` (1.2.1, a different product with a different binary). The
+  7.1.5 binary must be pinned explicitly rather than resolved by name.
+- `reel_upscale.py` and `reel_candidacy.py` set these themselves, overridable via `REEL_TVAI_FFMPEG`
+  and `REEL_TVAI_MODEL_DIR`, so the owner never supplies them by hand.
 
 ## 5. Interfaces
 
@@ -118,6 +141,20 @@ persisted index, no shared state between runs. The candidacy analyser writes a r
 computed metrics next to the input file for the owner to read; that's a report, not a data
 model this program owns.
 
+**Report format and location, settled by milestone 3** (`docs/SPEC-FEEDBACK.md` finding #18 — this
+section named neither):
+
+- **Two files, not one.** `<stem>.candidacy.txt` is the human-readable one — what answers "did I
+  already evaluate this?" months later without tooling. `<stem>.candidacy.json` carries every metric,
+  all three denominators, the thresholds used and the **per-frame** values, which are too noisy for the
+  report but are exactly what a later "did this change?" comparison needs. `candidacy_verify.py` can
+  re-verdict that JSON against different thresholds without re-decoding the video.
+- **"Next to the input file" carries finding #8's carve-out**, exactly as §4 does: a real clip's
+  reports go beside it; a clip under this repo's own `samples/` writes to `out/<clip>/` instead;
+  `--out` overrides both. Same three-branch rule as the other two tools.
+- **Re-running overwrites the previous report, deliberately.** Unlike an upscale, a candidacy run
+  costs seconds, so a newer answer supersedes an older one rather than competing with it.
+
 ## 7. Features
 
 **Must** (from `15_`, Must-have vs nice-to-have)
@@ -133,16 +170,72 @@ model this program owns.
 
 | Class | What | How measured |
 |---|---|---|
-| A — computable | Candidacy: is this source genuinely high-resolution, or an upscaled-once source sitting in a bigger container; how much blocking/banding; how much high-frequency detail survives | Scalar metrics (an effective-resolution estimate, a blocking/banding score, a high-frequency energy ratio) computed over a sampled set of frames, reported with the number of frames sampled |
+| A — computable | Candidacy: is this source genuinely high-resolution, or a **conventionally (interpolated) upscaled-once** source sitting in a bigger container; how much blocking/banding; how much high-frequency detail survives | Scalar metrics (an effective-resolution estimate, a blocking/banding score, a high-frequency energy ratio) computed over a sampled set of frames, reported with the number of frames sampled |
 | A — computable | Subtitle output is actually in the target language (English) | Language-detect the generated `.srt` text; report the detected language, a confidence score, and the number of subtitle cues examined |
 | A — computable | Upscale encode size | Output size vs source, as a ratio, alongside the model/CRF settings used to produce it |
 | B — human | Whether the upscale itself looks better | Owner's eyes. Not computable per `15_`: *"upscaling deliberately changes the image, so similarity metrics against the source measure change rather than improvement"* |
 
 **Denominator rule** (`08_Process_Adoption.md` §3 — formally reaching this program via entry
-81's side effect, which named this exact subtitle check). Both computable checks above must
+81's side effect, which named this exact subtitle check). Every computable check above must
 fail distinctly on zero: a subtitle file with zero cues is "examined nothing," not "language
 check passed"; a candidacy run that sampled zero frames is "broken," not "no defects found."
 This is the one general-quality rule this program inherits — see §10.
+
+**The denominator is tiered in practice, in both implemented cases.** A raw count is not a
+trustworthy denominator, because a populated input can still carry nothing to measure. `srt_verify.py`
+counts cues → non-empty → **scoreable** (a file of `[Music]` markers is populated but has no language
+to detect) and gates on the last. `reel_candidacy.py` counts frames requested → decoded → **usable**
+(an all-black frame decodes fine but has no measurable spectrum, and would poison every metric) and
+likewise gates on the last. Both report all tiers on every run, pass or fail.
+
+### Corrections to the candidacy row, from building it
+
+**What the effective-resolution estimate can and cannot see** (`docs/SPEC-FEEDBACK.md` finding #16 —
+the most consequential finding in this repo). It detects **conventional** upscales, where a resampler
+stretched a smaller source and invented no detail, so the spectrum falls off a cliff at the original
+Nyquist limit. Verified through the shipped tool: 720p→730p, 540p→574p, 360p→388p, 270p→308p inside
+1080p containers. It does **not** detect AI upscales. Verified against this repo's own milestone-2
+Topaz output, a known 2× upscale of 270p content: reported **96% genuine**. `tvai_up` synthesizes real
+high-frequency detail, filling the exact gap the test looks for.
+
+The consequence is not a footnote. **Detectability falls as the prior upscaler gets better**, so
+`15_`'s claim that *"the already-upscaled-once case is common, and catching it is pure saved time"*
+holds for the cheap half of that case and fails for the expensive half. **A clean effective-resolution
+reading is not evidence a source was never upscaled**, and the tool prints that caveat on every run
+and in every report rather than letting the number imply more than it supports. Detecting AI upscales
+is research-grade and out of scope — see §13.
+
+**The two damage metrics are not as independent as this table implies** (findings #19, #20). Blocking's
+*baseline* moves with content — a clean natural source measured 1.00, a clean `testsrc2` measured 4.72,
+because its synthetic edges align with the 8-px codec grid — so blocking is most trustworthy read
+comparatively, and is the weakest of the three. And heavy compression strips high frequencies exactly
+as a stretch does: a natural 1080p clip at crf42, never resized, measured 77% of container. The two
+causes are indistinguishable from one frame's spectrum, so the tool names both rather than asserting a
+stretch. The verdict is unaffected — both genuinely mean "detail is missing" — but the *reason* would
+have been wrong.
+
+**Thresholds exist, and did not before** (finding #17). This section names three metrics and no bar for
+any of them, while §3, §4 and §7 all call for a *verdict*. The owner's decision to have the exit code
+carry that verdict (0 worth / 3 marginal / 4 not worth, so a run chains into the upscale wrapper) made
+hard boundaries mandatory — report text can hedge, an exit code cannot. Following entry #12's
+precedent, they were put to the owner with their measured basis rather than chosen silently:
+
+| Flag | v1 default | Measured basis |
+|---|---|---|
+| `--min-resolution-ratio` | 0.80 | clean sources measured 1.00; stretched 0.28–0.68 |
+| `--blocking-worth` | 2.0 | clean natural source 1.00; crf40 7.43; crf51 12.17 |
+| `--banding-worth` | 3.0 | clean 1.00–1.17; quantized 8.14–21.50 |
+| `--resolution-marginal` / `--blocking-marginal` / `--banding-marginal` | 0.95 / 1.5 / 1.5 | mild elevation over the clean baselines above |
+
+All six are flags, so none is frozen. Measured numbers behind them: `docs/MILESTONE-3-RESULTS.md`.
+
+**On the upscale-encode-size row**, one framing correction from `docs/MILESTONE-2-RESULTS.md`: §3's
+metric (b) says output should stay *"close to source size,"* but an upscale has 4× the pixels at 2×
+scale, so it will legitimately exceed source size. The comparison that actually tests the 5–10×
+complaint is **against what Topaz's own no-quality-parameter preset produces for the identical
+upscale** — measured at 12.08× source, against this wrapper's 5.45× at CRF 20 on the same clip, i.e.
+2.2× smaller. Ratio-vs-source is still what the tool reports, because source size is the only figure
+always available at run time; it just should not be read as the pass condition on its own.
 
 **Translation accuracy is deliberately not a row here** (`docs/SPEC-FEEDBACK.md` finding #7,
 resolved this way rather than by adding a fourth row). Every row above is something the tool
@@ -169,8 +262,33 @@ milestone passed using a fourth, unnamed one:
 | `06_Spec_Readiness.md` §3, item 7 status | Purfview Faster-Whisper-XXL's usage (`-l ja -m medium --task translate`) | Originally named subtitle candidate #1. Superseded above — never installed or tested on this machine |
 | `15_Capture_P3_Processing.md`, Subtitles → The replacement | `whisper-cli -h` (whisper.cpp) | Originally named subtitle candidate #2. `--translate` confirmed present; CPU path works, but the CUDA build tested (b5130, `whisper-cublas-12.4.0`) was compiled without sm_120 in its architecture list and ran 10× *slower* than its own CPU path while still claiming to use CUDA (§4's restated GPU rule) — not depended on for GPU use, viable CPU-only |
 | `15_Capture_P3_Processing.md`, Subtitles → The replacement | `whisper "clip.mp4" --model medium --language Japanese --task translate --output_format srt` (`openai-whisper`) | The capture's own worked example, named nowhere in this table before milestone 1. Evaluated on a proven cu130/sm_120 torch stack: the model object reports being GPU-resident throughout, but `transcribe()` intermittently raises its own internal CPU-fallback warning mid-run, with output length varying run to run on identical input. Not depended on for that reliability reason |
-| Topaz Video AI 7.1.5, the `tvai_up` FFmpeg filter | Piping `tvai_up` straight into an H.265/AV1 encode at a chosen CRF, one command | The upscale wrapper — `15_` names this the fix for the 5–10× size problem |
+| Topaz Video AI 7.1.5, the `tvai_up` FFmpeg filter | Piping `tvai_up` into an H.265/AV1 encode at a chosen CRF. **Not one ffmpeg process — see below** | The upscale wrapper — `15_` names this the fix for the 5–10× size problem |
 | `04_Claude_Boundaries.md` §1 | The instrumentation requirement for anything judged visually | Candidacy analyser's metric design |
+
+**The upscale row, corrected by milestone 2** (`docs/SPEC-FEEDBACK.md` findings #10, #12, #13). Three
+things this table said, or failed to say, that building disproved:
+
+- **"One command" cannot mean one ffmpeg process on this machine.** Topaz 7.1.5's bundled ffmpeg has
+  **no software H.265/AV1 encoder** — its encoders are `hevc_nvenc`, `av1_nvenc`, `hevc_qsv`,
+  `av1_qsv`, `hevc_amf`, `av1_amf`, none of which accepts a true `-crf`. The only CRF-capable encoder
+  in that binary is `libvpx-vp9`, which is neither H.265 nor AV1 (`ffmpeg -h encoder=libx265` against
+  Topaz's binary reports *"Codec 'libx265' is not recognized"*). `reel_upscale.py` therefore runs
+  `tvai_up` in Topaz's ffmpeg **piped into a second, system ffmpeg process** that does carry
+  `libx265`/`libsvtav1`. The owner still runs one command; two processes run beneath it. Read "one
+  command" as the owner's invocation, not the process count. Confirms `15_`'s own framing that the size
+  problem is *"knowledge, not capability"* — Topaz's default preset carries no quality parameter at all.
+- **A default CRF is now specified: 20.** This document never named one. Chosen deliberately
+  conservative — an upscale spends hours synthesizing high-frequency detail, and a higher CRF discards
+  exactly what was just bought. `--crf` overrides per run. Encoder presets are per-encoder defaults
+  (`medium` for libx265, `6` for libsvtav1, `p5` for hevc_nvenc), because their value spaces don't
+  match: `--preset medium` is a hard error on libsvtav1, which takes an integer.
+- **Audio and metadata passthrough had to be designed, not found here.** A raw video pipe carries no
+  audio at all, so a naive `tvai_up`-into-encoder pipe would silently emit a video-only file. The
+  original is supplied to the encoder as a **second input**, its audio mapped through untouched
+  (`-map 1:a? -c:a copy`) and its container metadata copied by default (`-map_metadata 1`).
+  `-fps_mode passthrough` is set explicitly, and the pipe uses `nut` rather than `yuv4mpegpipe`
+  precisely because it carries real per-frame timestamps, so a variable-frame-rate source can't drift
+  against the copied audio. Verified: output audio codec and duration match source exactly.
 
 **Backend-selection tooling** (`docs/SPEC-FEEDBACK.md` finding #7): the table above compares
 candidates by whether they run at all. Choosing between candidates that *do* run needed a number,
@@ -218,6 +336,25 @@ case.
 candidates from scratch — none was pre-installed — and the candidate that passed is not the one
 this section originally named; see §9's corrected table.
 
+### Subsequent milestones
+
+All three §7 must-haves now exist. Build states per `CLAUDE.md`'s rule, never reported as more than
+they are:
+
+| Milestone | Tool | State | Record | Findings |
+|---|---|---|---|---|
+| 1 | Subtitles (`reel_subtitles.py`, `srt_verify.py`) | **built** | `docs/MILESTONE-1-RESULTS.md` | #1–#9 |
+| 2 | Upscale wrapper (`reel_upscale.py`, `upscale_verify.py`) | **built-partial** | `docs/MILESTONE-2-RESULTS.md` | #10–#15 |
+| 3 | Candidacy analyser (`reel_candidacy.py`, `candidacy_verify.py`) | **built-partial** | `docs/MILESTONE-3-RESULTS.md` | #16–#20 |
+
+Both **built-partial** states have the same single cause and the same remedy: no real-world clip has
+been through either tool. This repo's `samples/` holds no video (finding #14), so milestones 2 and 3
+were verified against synthetically generated clips and against milestone 2's own output. The untested
+dimension is real footage — genuine codecs, sensor grain, interlacing, telecine, letterboxing. For the
+candidacy analyser specifically, **grain is the thing most likely to move a number**: it adds real
+broadband energy and may push effective-resolution readings up, so `--blocking-worth 2.0` is the
+default to re-check first on grainy content.
+
 ## 13. Out of scope for v1
 
 - **Batch queue** — later, if ever; the capture doubts it's needed at all (§7).
@@ -229,3 +366,14 @@ this section originally named; see §9's corrected table.
 - **Topaz model selection logic** — never, by design; the owner's manual call permanently
   (§4, §9).
 - **Demosaicing** — never, portfolio-wide (`04_` §2).
+- **AI-upscale detection** — added by milestone 3 (`docs/SPEC-FEEDBACK.md` finding #16). The candidacy
+  analyser's effective-resolution metric catches conventionally stretched sources and structurally
+  cannot catch AI-upscaled ones, which synthesize genuine high-frequency detail. Signatures that might
+  distinguish them (unnaturally uniform edge sharpness, absent sensor noise, over-regular texture) are
+  research-grade, confounded by the heavy compression these sources already carry, and far outside the
+  "Below Thin" effort class at the top of this document. Recorded as a stated limitation the tool
+  prints on every run, not as an implied capability to build later.
+- **Upscale *result* quality scoring** — unchanged from §8's Class B row, restated here because the
+  candidacy analyser invites the confusion: it judges a source *before* an upscale, never the output
+  after one. `15_`: *"upscaling deliberately changes the image, so similarity metrics against the
+  source measure change rather than improvement."* Owner's eyes, permanently.

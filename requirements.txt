@@ -9,6 +9,9 @@
 # Installed here: yt-dlp 2026.09.16.074918 from yt-dlp/yt-dlp-master-builds.
 # Re-pin to a PyPI release once one ships with the fix:
 #   pip install "yt-dlp>=2026.08.19"
+# Re-checked 2026-09-21: PyPI's newest *stable* release is still 2026.8.19 —
+# the exact one that fails — with only .dev0 builds published since. The
+# nightly pin above is still required. Worth re-checking, not re-deriving.
 yt-dlp @ https://github.com/yt-dlp/yt-dlp-master-builds/releases/latest/download/yt-dlp.tar.gz
 
 # Language detection for the SRT verification check (SPEC.md §8). Pure Python,

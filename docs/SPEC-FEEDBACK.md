@@ -17,13 +17,15 @@ the results record.
 judged not a spec defect (#6), or was already fixed in code with a note here (#8). Nothing from
 milestone 1 is still waiting on a decision.
 
-**Findings #10-#15 (upscale wrapper) are recorded, not yet applied to `docs/SPEC.md`
-itself** — left for the owner's read, since #10 in particular changes what §9's "one command" can
-mean on this machine and is a judgment call, not a typo fix.
+**Status: findings #10-#20 are now resolved too, and applied to `docs/SPEC.md`.** #10 → §9's upscale
+note; #11 and #15 → §4; #12 and #13 → §9; #14 → §12's milestone table (history, not a spec defect);
+#16 → §8's candidacy row, its corrections subsection, and a new §13 out-of-scope entry; #17, #19 and
+#20 → §8's corrections subsection; #18 → §6. Nothing from any of the three milestones is still waiting
+on a decision.
 
-**Findings #16-#20 (candidacy analyser) are likewise recorded and not applied.** #16 is the one that
-matters: it does not report a missing detail, it reports that a premise §8 and `CAPTURE.md` both rest
-on is only conditionally true, and is *least* true in the case the capture says is most common.
+#16 is the one that mattered most: it does not report a missing detail, it reports that a premise §8
+and `CAPTURE.md` both rest on is only conditionally true, and is *least* true in the case the capture
+says is most common.
 
 ---
 
@@ -231,6 +233,8 @@ verified working end to end (§8's numbers are in `docs/MILESTONE-2-RESULTS.md`)
 exactly one command; two ffmpeg processes run underneath it. Update §9's phrasing if "one command" is
 meant to promise a single process specifically, since that promise can't be kept here.
 
+**Resolved — applied to §9.** The reference table's `tvai_up` row now says "**Not one ffmpeg process — see below**", and a new subsection under it records the full encoder inventory of Topaz's bundled ffmpeg, the two-process pipe that replaces the single-process reading, and the instruction to read "one command" as the owner's invocation rather than the process count.
+
 ### 11. `TVAI_MODEL_DIR` is mandatory and appears nowhere in the spec or the capture
 
 **Spec says:** Nothing — §4's "Other" section confirms Topaz 7.1.5 is installed and licensed, but
@@ -248,6 +252,8 @@ this machine's Topaz setup, the same way §4 records the CUDA DLL search-path re
 faster-whisper. `reel_upscale.py` sets both itself (`REEL_TVAI_MODEL_DIR` env-overridable, matching
 the `REEL_FFMPEG`/`REEL_BCOMPARE` convention) so the owner never has to know this by hand.
 
+**Resolved — applied to §4.** "Other" now carries a Topaz-environment block: `TVAI_MODEL_DIR` as a hard requirement with its value and the log line it was recovered from, `TVAI_MODEL_DATA_DIR` alongside it (marked as not independently confirmed), the two-coexisting-installs hazard, and the `REEL_TVAI_FFMPEG` / `REEL_TVAI_MODEL_DIR` overrides the tools expose.
+
 ### 12. No default CRF is specified anywhere in the spec
 
 **Spec says:** §9 says "at a chosen CRF"; nowhere states what that value should default to.
@@ -260,6 +266,8 @@ upscale spends real GPU time synthesizing high-frequency detail, and a default t
 it than necessary would be working against the tool's own output. `--crf` remains fully overridable
 per run. If the owner ever wants this locked to "no default, same as `--model`," that's a one-line
 change (`required=True`) with no other structural impact.
+
+**Resolved — applied to §9.** The new upscale subsection records CRF 20 as the v1 default with its reasoning (don't discard the detail the upscale just paid for), and adds the per-encoder preset defaults, including why a single shared preset string cannot work across libx265, libsvtav1 and hevc_nvenc.
 
 ### 13. Total silence on audio, container, and metadata passthrough
 
@@ -276,6 +284,8 @@ the original file is given to the encoder as a *second* input, its audio is mapp
 design decision, not a silent implementation detail — the next person building against this spec
 should not have to discover independently that a naive `tvai_up`-into-encoder pipe drops audio.
 
+**Resolved — applied to §9.** The same subsection now states the audio and metadata passthrough design as a deliberate decision rather than an implementation detail: original-as-second-input, `-map 1:a? -c:a copy`, `-map_metadata 1`, `-fps_mode passthrough`, and why the pipe uses `nut` rather than `yuv4mpegpipe`.
+
 ### 14. No video clip exists in `samples/` — milestone 2 could not meet milestone 1's "one real clip" bar the same way
 
 **Spec says:** §12's precedent (milestone 1) is "one real clip end to end." Nothing in §12 covers the
@@ -290,6 +300,8 @@ silently substitute without saying so. Build state is **built-partial**: the pip
 audio passthrough, and both denominator-rule gates (truncation, size ratio) are all proven against
 real ffmpeg processes and a real (if synthetic) file, but no actual codec/interlacing/multi-track-audio
 variety of a real clip has gone through yet. See `docs/MILESTONE-2-RESULTS.md`.
+
+**Resolved as history, not as a spec correction** — there is no defect here to fix. Recorded in §12's new milestone table, which states both built-partial tools' single shared cause (no real clip has run) and names the untested dimensions, with grain flagged as the one most likely to move a candidacy number.
 
 ### 15. `tvai_up` segfaults, rather than erroring cleanly, on fewer than 4 input frames
 
@@ -309,6 +321,8 @@ frames" or similar.
 filter with fewer than a handful of frames** — a segfault under a preflight check will otherwise read
 as this tool's own crash rather than an upstream limitation. `reel_upscale.py`'s preflight smoke test
 uses 8 frames specifically to stay clear of this threshold with margin.
+
+**Resolved — applied to §4.** The GPU/CUDA section now lists this as the **third** failure signature alongside `CUBLAS_STATUS_NOT_SUPPORTED` and the silent 10×-slower degradation, with the bisected frame threshold and the standing rule never to probe a `tvai_*` filter with fewer than a handful of frames.
 
 ### 16. "Is it genuinely 1080p or a 480p upscale in a 1080p container" is computable only for *stretched* upscales — and the premise is weakest exactly where the capture says the need is greatest
 
@@ -345,6 +359,8 @@ and in every report, so the tool never makes the claim the spec currently implie
 upscales is research-grade and well outside the "Below Thin" effort class — it should be recorded as
 out of scope, not left as an implied capability.
 
+**Resolved — applied to §8 and §13.** §8's candidacy row now reads "**conventionally (interpolated) upscaled-once**", and a new "Corrections to the candidacy row" subsection carries the ground-truth ladder, the 96%-genuine Topaz result, and the statement that a clean reading is not evidence a source was never upscaled. §13 gains an **AI-upscale detection** out-of-scope entry saying why a detector is not the answer. The tool prints the caveat on every run and in every report, so the claim is never made in the first place.
+
 ### 17. No threshold exists anywhere for any candidacy metric, and the exit-code decision made them mandatory
 
 **Spec says:** §8 names three metrics — *"an effective-resolution estimate, a blocking/banding score,
@@ -368,6 +384,8 @@ put to the owner with their measured basis and approved rather than chosen silen
 that thresholds are deliberately left to the tool. All six are flags, so nothing is frozen — but the
 spec should not continue to imply a "computable verdict" exists without saying what makes it compute.
 
+**Resolved — applied to §8.** The corrections subsection records all six thresholds in a table with the measured basis for each, states that the exit-code-as-verdict decision is what made hard boundaries mandatory, and notes that all six are flags so nothing is frozen.
+
 ### 18. §6 says a report is written "next to the input file" without naming a format, and without reconciling against finding #8
 
 **Spec says:** §6: *"The candidacy analyser writes a report of computed metrics next to the input file
@@ -381,6 +399,8 @@ file" collides with finding #8's resolution in the same way `reel_subtitles.py` 
 must write to `out/<clip>/` instead. Implemented with the same three-branch rule as both sibling tools.
 **Suggested correction:** §6 should say "next to the input, or `out/<clip>/` for this repo's own
 `samples/` clips," matching the correction finding #8 already applied to §4.
+
+**Resolved — applied to §6.** That section now specifies both files and what each is for, states that "next to the input file" carries finding #8's `samples/`→`out/<clip>/` carve-out, and records that re-running overwrites deliberately.
 
 ### 19. The blocking metric's baseline is content-dependent, so its threshold is a heuristic rather than a calibrated bar
 
@@ -399,6 +419,8 @@ against the same source at different encode settings, and that a single absolute
 grid-aligned synthetic content can mislead. The effective-resolution metric should carry the most
 weight of the three; blocking is the weakest.
 
+**Resolved — applied to §8.** The corrections subsection records both clean baselines (1.00 natural, 4.72 grid-aligned synthetic), states that blocking is best read comparatively, and names it the weakest of the three metrics.
+
 ### 20. Heavy compression and a stretched source are not distinguishable by the effective-resolution metric
 
 **Spec says:** §8 treats the effective-resolution estimate and the blocking/banding score as separate
@@ -413,3 +435,6 @@ indistinguishable from a single frame's spectrum, and both mean "detail is missi
 verdict actually turns on. Fixed in the wording instead: the tool reports *"a stretched source, or high
 frequencies stripped by heavy compression"* rather than asserting the first. Worth stating in §8 so the
 two rows are not read as more independent than they are.
+
+**Resolved — applied to §8.** Recorded in the corrections subsection with the crf42 measurement (77% of container on a clip that was never resized), and noted that the verdict is unaffected while the reason would have been wrong. Fixed in the tool's wording, which names both causes.
+
