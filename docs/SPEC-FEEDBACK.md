@@ -17,9 +17,13 @@ the results record.
 judged not a spec defect (#6), or was already fixed in code with a note here (#8). Nothing from
 milestone 1 is still waiting on a decision.
 
-**Findings #10-#15 (upscale wrapper, this session) are recorded, not yet applied to `docs/SPEC.md`
+**Findings #10-#15 (upscale wrapper) are recorded, not yet applied to `docs/SPEC.md`
 itself** — left for the owner's read, since #10 in particular changes what §9's "one command" can
 mean on this machine and is a judgment call, not a typo fix.
+
+**Findings #16-#20 (candidacy analyser) are likewise recorded and not applied.** #16 is the one that
+matters: it does not report a missing detail, it reports that a premise §8 and `CAPTURE.md` both rest
+on is only conditionally true, and is *least* true in the case the capture says is most common.
 
 ---
 
@@ -305,3 +309,107 @@ frames" or similar.
 filter with fewer than a handful of frames** — a segfault under a preflight check will otherwise read
 as this tool's own crash rather than an upstream limitation. `reel_upscale.py`'s preflight smoke test
 uses 8 frames specifically to stay clear of this threshold with margin.
+
+### 16. "Is it genuinely 1080p or a 480p upscale in a 1080p container" is computable only for *stretched* upscales — and the premise is weakest exactly where the capture says the need is greatest
+
+**Spec says:** §8's candidacy Class A row: *"is this source genuinely high-resolution, or an
+upscaled-once source sitting in a bigger container."* `CAPTURE.md`'s "Candidacy vs result" section
+states the mechanism and the motive together: *"is it genuinely 1080p or a 480p upscale in a 1080p
+container... For these sources the already-upscaled-once case is common, and catching it is pure saved
+time."*
+**What actually happened:** The metric works, and works well, for *conventional* upscales. A source
+scaled up with an ordinary resampler has nothing above its original Nyquist limit — interpolation
+invents no detail — so its spectrum falls off a cliff exactly where the true resolution ran out.
+Ground truth through the shipped tool, 1080p containers built from known sources: 1080p→1063p,
+720p→730p, 540p→574p, 360p→388p, 270p→308p. Against synthetic band-limited planes the estimate is
+accurate to under 3% (built at 0.20/0.30/0.50/0.70 of Nyquist, measured 0.207/0.309/0.512/0.707).
+
+It does **not** work for AI upscales, and this was verified rather than assumed. Run against this
+repo's own `out/degraded/upscaled.ahq-12.crf20.mp4` — a Topaz `tvai_up` 2× upscale of 270p content,
+produced by milestone 2 — the analyser reported **520p of a 540p container, 96% "genuine."** `tvai_up`
+*synthesizes* plausible high-frequency detail; that synthesized detail is real spectral energy, and it
+fills precisely the gap this test looks for. A second, narrower blind spot exists for
+nearest-neighbour expansion (hard square edges are spectrally broadband, so an 8× NN expansion still
+reads >0.9) — recorded in `tests/test_candidacy_verify.py` as asserted behaviour rather than left to
+be rediscovered.
+
+**This is not simply "the metric has a limitation."** Detectability falls as the prior upscaler gets
+better. A lazy stretch is caught easily; a modern AI upscale — increasingly the likely one, and by far
+the most expensive to redo — is not caught at all. The capture's claim that *"the already-upscaled-once
+case is common, and catching it is pure saved time"* is therefore true for the cheap half of that case
+and false for the expensive half.
+**Suggested correction:** Qualify §8's row and CAPTURE's sentence to say *stretched* or *interpolated*
+upscale rather than upscale generally, and state plainly that a clean effective-resolution reading is
+not evidence a source was never upscaled. `candidacy_verify.CAVEAT` prints exactly that on every run
+and in every report, so the tool never makes the claim the spec currently implies it can. Detecting AI
+upscales is research-grade and well outside the "Below Thin" effort class — it should be recorded as
+out of scope, not left as an implied capability.
+
+### 17. No threshold exists anywhere for any candidacy metric, and the exit-code decision made them mandatory
+
+**Spec says:** §8 names three metrics — *"an effective-resolution estimate, a blocking/banding score,
+a high-frequency energy ratio"* — and gives no numeric bar for any of them. §7 and §3 both call for a
+*"verdict,"* and §4 requires that verdict to *"expose numbers rather than rest on a visual read."*
+**What actually happened:** A verdict needs boundaries. The owner chose this session to have the exit
+code carry the verdict (`0` worth / `3` marginal / `4` not worth) so a run can chain into
+`reel_upscale.py` — which means the tool cannot hedge its way out of a hard cut, even though the
+report text does hedge. Every threshold had to be invented. Following finding #12's precedent (the CRF
+default, *"resolved by owner decision this session, recorded here rather than guessed"*), they were
+put to the owner with their measured basis and approved rather than chosen silently:
+
+| Threshold | Value | Measured basis |
+|---|---|---|
+| `--min-resolution-ratio` | 0.80 | clean sources measured 1.00; stretched ones 0.28–0.68 |
+| `--blocking-worth` | 2.0 | clean natural source 1.00; crf40 7.43; crf51 12.17 |
+| `--banding-worth` | 3.0 | clean 1.00–1.17; quantized 8.14–21.50 |
+| `--resolution-marginal` / `--blocking-marginal` / `--banding-marginal` | 0.95 / 1.5 / 1.5 | mild elevation over the clean baselines above |
+
+**Suggested correction:** Record these in §8 as the v1 bars with their provenance, or state explicitly
+that thresholds are deliberately left to the tool. All six are flags, so nothing is frozen — but the
+spec should not continue to imply a "computable verdict" exists without saying what makes it compute.
+
+### 18. §6 says a report is written "next to the input file" without naming a format, and without reconciling against finding #8
+
+**Spec says:** §6: *"The candidacy analyser writes a report of computed metrics next to the input file
+for the owner to read; that's a report, not a data model this program owns."*
+**What actually happened:** Two gaps. First, no format is named — "for the owner to read" implies
+human-readable, but nothing says whether a machine-readable artifact is wanted alongside. Resolved by
+owner decision: both a `.txt` (what you actually read months later when asking "did I already look at
+this?") and a `.json` (every metric, all three denominators, the thresholds used, and the per-frame
+values — too noisy for the report, exactly what a later comparison needs). Second, "next to the input
+file" collides with finding #8's resolution in the same way `reel_subtitles.py` did: a `samples/` clip
+must write to `out/<clip>/` instead. Implemented with the same three-branch rule as both sibling tools.
+**Suggested correction:** §6 should say "next to the input, or `out/<clip>/` for this repo's own
+`samples/` clips," matching the correction finding #8 already applied to §4.
+
+### 19. The blocking metric's baseline is content-dependent, so its threshold is a heuristic rather than a calibrated bar
+
+**Spec says:** §8 asks for *"a blocking/banding score"* as a Class A computable, with no caveat about
+how it should be read.
+**What actually happened:** Blocking is measured as gradient across the codec's 8-px grid ÷ gradient
+elsewhere, and it tracks compression cleanly on a given source (crf51 12.17 → crf40 7.43 → crf30 4.52
+→ crf20 4.59). But the *baseline* moves with content: a clean smooth/natural source measured **1.00**
+while a clean `testsrc2` measured **4.72**, because `testsrc2`'s hard synthetic edges align with the
+8-px grid. That is pathological content rather than representative, but it is enough to make an
+absolute threshold a heuristic. Observed live during verification: every clip in the `testsrc2`-based
+resolution ladder returned "worth upscaling" on blocking alone, including the untouched native 1080p
+one.
+**Suggested correction:** Note in §8 that the blocking score is comparative, most trustworthy when read
+against the same source at different encode settings, and that a single absolute reading on
+grid-aligned synthetic content can mislead. The effective-resolution metric should carry the most
+weight of the three; blocking is the weakest.
+
+### 20. Heavy compression and a stretched source are not distinguishable by the effective-resolution metric
+
+**Spec says:** §8 treats the effective-resolution estimate and the blocking/banding score as separate
+metrics answering separate questions — *"is this source genuinely high-resolution"* versus *"how much
+blocking/banding."*
+**What actually happened:** They are not independent. Heavy compression strips high-frequency detail,
+which reads exactly like a stretch. A natural 1080p source re-encoded at crf42 — never resized at all —
+measured **827p of 1080p (77%)**, tripping the stretched-source bar. The verdict was still correct
+(that file genuinely is worth restoring), but the *reason* would have been wrong.
+**Suggested correction:** Not a defect to fix in the metric — the two causes are genuinely
+indistinguishable from a single frame's spectrum, and both mean "detail is missing," which is what the
+verdict actually turns on. Fixed in the wording instead: the tool reports *"a stretched source, or high
+frequencies stripped by heavy compression"* rather than asserting the first. Worth stating in §8 so the
+two rows are not read as more independent than they are.

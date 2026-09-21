@@ -40,6 +40,18 @@ faster-whisper==1.2.1
 nvidia-cublas-cu12
 nvidia-cudnn-cu12
 
+# The candidacy analyser's metric code (candidacy_verify.py). Already present
+# transitively via ctranslate2/torch, but pinned here because it is now a
+# direct, deliberate import rather than something inherited.
+#
+# numpy.fft is what makes SPEC.md §8's effective-resolution metric possible
+# at all: the test is whether a file's spectrum falls off a cliff where its
+# true resolution ran out. Keeping it to numpy means no scipy, no OpenCV and
+# no Pillow — frames arrive as raw grayscale bytes straight from FFmpeg and
+# become arrays via np.frombuffer, which is CLAUDE.md's "prefer calling
+# FFmpeg over wrapping it in a library" applied to image handling too.
+numpy
+
 # Test runner for tests/.
 pytest
 

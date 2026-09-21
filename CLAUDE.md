@@ -51,7 +51,23 @@ clip has gone through yet: no video clip exists in this repo's `samples/`, so ve
 synthetically generated degraded clip instead. Findings #10–#15 in `docs/SPEC-FEEDBACK.md` are what
 building it found wrong with or missing from the spec.
 
-**Next up: the candidacy analyser** — the last of the three tools in §7.
+**Status, candidacy analyser: built-partial.** `reel_candidacy.py` samples frames across a source and
+computes §8's three metrics (`candidacy_verify.py`) — an effective-resolution estimate, blocking and
+banding scores, and a high-frequency energy ratio — then maps them to a verdict carried in the exit
+code (0 worth / 3 marginal / 4 not worth), so a run chains into `reel_upscale.py`. The denominator rule
+is tiered `requested → decoded → usable` and gates on *usable*, so an all-black source reads "broken"
+rather than clean. Reports are written as `.txt` and `.json` beside the input (or `out/<clip>/` for a
+`samples/` clip). See `docs/MILESTONE-3-RESULTS.md`. Partial for the same reason as the upscale
+wrapper: no real-world footage has gone through, only synthetic clips and milestone 2's own output.
+
+**Its most important result is a limit, not a feature** (`docs/SPEC-FEEDBACK.md` finding #16): the
+effective-resolution metric catches *stretched* upscales but not AI ones — verified against this repo's
+own Topaz output, which read as 96% genuine. Detectability falls as the prior upscaler gets better, so
+the expensive half of the "already upscaled once" case escapes. Every run prints that caveat; don't let
+a clean reading be reported as evidence a source was never upscaled.
+
+**All three §7 tools now exist.** Findings #16–#20 in `docs/SPEC-FEEDBACK.md` are what building the
+candidacy analyser found wrong with or missing from the spec.
 
 Dev/test clips live in `samples/<clip>/`, never committed — `source.<ext>` is what gets fed to the
 tool, `reference.<lang>.<ext>` is ground-truth material for scoring only, never fed to the tool
