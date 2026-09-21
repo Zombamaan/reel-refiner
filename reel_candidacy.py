@@ -72,11 +72,17 @@ EDGE_SKIP = 0.05  # ignore the first and last 5% — black intros/outros aren't 
 
 
 def probe_video(path: Path) -> dict:
-    """ffprobe path -> {width, height, duration}. Raises RuntimeError on an
-    unprobeable file, so the caller has a single failure channel to convert
-    into exit 1."""
+    """ffprobe path -> {width, height, duration, codec}. Raises RuntimeError on
+    an unprobeable file, so the caller has a single failure channel to convert
+    into exit 1.
+
+    Duration prefers the video stream's own figure, then frames ÷ frame rate
+    (`-count_packets` walks packet headers without decoding), and only then the
+    container's. It matters because a duration of 0 makes sample_timestamps
+    degenerate: every sample lands on the same frame, and the run would report
+    N usable frames having examined one."""
     cmd = [FFPROBE, "-v", "error", "-print_format", "json",
-           "-show_format", "-show_streams", str(path)]
+           "-show_format", "-show_streams", "-count_packets", str(path)]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(f"ffprobe failed on {path}:\n{proc.stderr[-2000:]}")
@@ -89,9 +95,27 @@ def probe_video(path: Path) -> dict:
     if not video:
         raise RuntimeError(f"no video stream in {path}")
     vs = video[0]
-    duration = float(data.get("format", {}).get("duration", 0.0) or 0.0)
+
+    def _f(value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    duration = _f(vs.get("duration"))
     if duration <= 0:
-        duration = float(vs.get("duration", 0.0) or 0.0)
+        frames = 0
+        for key in ("nb_frames", "nb_read_packets"):
+            frames = int(_f(vs.get(key)))
+            if frames > 0:
+                break
+        num, _, den = (vs.get("r_frame_rate") or "0/1").partition("/")
+        fps = _f(num) / _f(den) if _f(den) else 0.0
+        if frames > 0 and fps > 0:
+            duration = frames / fps
+    if duration <= 0:
+        duration = _f(data.get("format", {}).get("duration"))
+
     return dict(
         width=int(vs.get("width", 0) or 0),
         height=int(vs.get("height", 0) or 0),
@@ -101,11 +125,18 @@ def probe_video(path: Path) -> dict:
 
 
 def sample_timestamps(duration: float, count: int) -> list:
-    """Evenly spaced across the middle 90% of the file."""
+    """Evenly spaced across the middle 90% of the file.
+
+    An unknown duration yields **one** timestamp, not `count` copies of zero.
+    Returning N identical timestamps would have the run analyse frame 0 N
+    times and then report N usable frames — a denominator claiming a breadth
+    of sampling that never happened, which is exactly what CLAUDE.md's rule
+    exists to prevent. run() refuses an unknown duration outright; this keeps
+    the function honest on its own terms too."""
     if count <= 0:
         return []
     if duration <= 0:
-        return [0.0] * count
+        return [0.0]
     lo, hi = duration * EDGE_SKIP, duration * (1 - EDGE_SKIP)
     if hi <= lo:
         lo, hi = 0.0, max(duration - 0.001, 0.0)
@@ -248,6 +279,16 @@ def run(
         return 1
 
     width, height, duration = info["width"], info["height"], info["duration"]
+    if duration <= 0:
+        # Refused rather than sampled: every timestamp would land on frame 0,
+        # and the report would claim N frames examined on the strength of one.
+        print(f"usage error: could not determine the duration of {video_path} "
+              f"(no video-stream duration, no frame count, no container duration). "
+              f"Sampling would analyse the same frame {frames} times and report it as "
+              f"{frames} frames examined; refusing rather than overstating the denominator.",
+              file=sys.stderr)
+        return 1
+
     print(f"analysing {video_path.name} ({width}x{height}, {duration:.1f}s) "
           f"over {frames} sampled frames ...")
 

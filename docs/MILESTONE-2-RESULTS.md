@@ -86,6 +86,34 @@ exit code: 3
 A flattering size ratio (a 5s file is naturally small) does not save it — duration is checked
 independently and catches it. `"pass"` does not appear in the message.
 
+**Correction — this test was insufficient, and the gate it "verified" was broken.** Found by a later
+code review, reproduced, and fixed. `ffmpeg -t 5 -c copy` truncates **both** streams, so the container
+duration dropped and the gate fired for the right reason *in that case only*. The failure mode that
+actually occurs — a pipe dying mid-encode — truncates the **video** while the audio mux completes,
+because `reel_upscale.py` always copies the source's full-length audio in. `probe_media` was reading
+`format.duration`, which is the *max* of the video and audio streams, so:
+
+```
+video: 4.08s / 102 frames     audio: 10.0s     container: 10.0s
+  -> exit 0, "pass: 0.61x source size, 10.00s output vs 10.00s source"
+```
+
+A file missing 60% of its video, reported as a pass, by the only correctness gate on an upscale run.
+The zero-frame gate was defeated by the same mechanism on containers that omit `nb_frames`.
+
+**Fixed:** `probe_media` now reports the **video stream's** duration and frame count, never the
+container's — preferring the stream's own duration, then frames ÷ frame rate via `-count_packets`
+(packet headers only, no decoding; measured at 29 ms), and falling back to container duration only as
+a last resort, with `duration_source` recording which was used so a guess is visible rather than
+silent. `_evaluate` now trips on **either** a short duration or a short frame count. Re-verified
+against the reproduction above: **exit 3**, *"truncated output (duration and frame count short): 4.08s
+vs source 10.00s, 102 vs 250 frames"*. Two regression tests cover it, including one where the duration
+looks fine and only the frame count is short.
+
+The lesson worth keeping: a test that truncates both streams cannot distinguish a working gate from one
+reading the wrong field. **Build the failure case the system actually produces, not the one that is
+convenient to construct.**
+
 ### `--max-ratio` forced low, to confirm the gate actually fires
 
 ```

@@ -273,7 +273,14 @@ def test_sample_timestamps_skip_the_edges_and_stay_in_range():
 
 def test_sample_timestamps_handles_a_very_short_clip():
     assert len(reel_candidacy.sample_timestamps(0.2, 5)) == 5
-    assert len(reel_candidacy.sample_timestamps(0.0, 3)) == 3
+
+
+def test_unknown_duration_yields_one_timestamp_not_n_copies_of_zero():
+    """Regression, code review finding #3. Returning [0.0] * count made every
+    sample land on frame 0 while the report claimed `count` usable frames —
+    a denominator asserting a breadth of sampling that never happened, which
+    is the exact failure CLAUDE.md's rule exists to prevent."""
+    assert reel_candidacy.sample_timestamps(0.0, 20) == [0.0]
 
 
 def test_report_paths_never_equal_the_input(tmp_path):

@@ -252,7 +252,16 @@ def run_pipe(
         tvai_log_path = Path(tmp) / "tvai_stderr.log"
         with open(tvai_log_path, "w", encoding="utf-8", errors="replace") as tvai_log_fh:
             producer = subprocess.Popen(tvai_cmd, stdout=subprocess.PIPE, stderr=tvai_log_fh, env=_tvai_env())
-            consumer = subprocess.Popen(enc_cmd, stdin=producer.stdout, stderr=subprocess.PIPE, text=True)
+            try:
+                consumer = subprocess.Popen(enc_cmd, stdin=producer.stdout, stderr=subprocess.PIPE, text=True)
+            except OSError:
+                # The encoder never started (missing binary — reachable via
+                # --skip-preflight, which bypasses the -encoders check). Topaz
+                # is already running and holding the GPU; don't orphan it.
+                producer.stdout.close()
+                producer.kill()
+                producer.wait()
+                raise
             producer.stdout.close()  # so the producer sees a broken pipe if the consumer dies first
 
             enc_tail: list[str] = []

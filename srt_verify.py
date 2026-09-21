@@ -11,11 +11,16 @@ Cue count alone is not a trustworthy denominator — a file of "[Music]" / "♪"
 that kind of marker are excluded from the "scoreable" counts, which is what
 actually gates pass/fail.
 
-Two independent language signals are used, because one detector's confidence
-is not evidence on its own: py3langid's normalized class probability, and a
-dependency-free CJK-vs-Latin character ratio, which is decisive for the
-English/Japanese question this repo cares about and can't fail the way a
-statistical model can.
+Two language signals are computed and reported, but only one of them gates:
+**py3langid's normalized class probability decides pass/fail**, while the
+dependency-free CJK-vs-Latin character ratio is reported alongside it as
+corroborating evidence a human can sanity-check, and can't fail the way a
+statistical model can. (An earlier version of this docstring called the ratio
+"decisive"; it never entered the decision, and saying so was the docstring
+overstating the code. Attempts to build a case where the missing gate lets
+non-English through did not find one — romaji, 43% CJK and English-with-5%-CJK
+inputs were all caught by py3langid alone — so this is a wording fix, not a
+behaviour change.)
 
 Exit codes:
   0  pass — target language detected, confidence >= threshold, denominators > 0

@@ -16,9 +16,15 @@ import reel_upscale  # noqa: E402
 from upscale_verify import DEFAULT_DURATION_TOLERANCE, DEFAULT_MAX_RATIO, _evaluate  # noqa: E402
 
 
-def media(frames=240, duration=10.0, size=1_000_000):
+def media(frames=240, duration=10.0, size=1_000_000, container_duration=None):
+    """A probed-media summary. `duration` and `frames` describe the VIDEO
+    stream; `container_duration` defaults to matching it but can be set
+    higher to model the real shape of a truncated upscale — short video, full
+    audio, so the container reports the audio's length."""
     return dict(duration=duration, frames=frames, bytes=size,
-                video_codec="hevc", audio_codec="aac", audio_duration=duration, has_audio=True)
+                video_codec="hevc", audio_codec="aac", audio_duration=duration, has_audio=True,
+                container_duration=container_duration if container_duration is not None else duration,
+                duration_source="stream")
 
 
 def evaluate(source, output, model="ahq-12", crf=20, max_ratio=DEFAULT_MAX_RATIO,
@@ -50,6 +56,39 @@ def test_truncated_output_fails_even_with_a_flattering_ratio():
     assert result.exit_code == 3
     assert "pass" not in result.message.lower()
     assert "truncated" in result.message.lower()
+
+
+def test_truncated_video_with_full_length_audio_is_caught():
+    """Regression, code review finding #1. reel_upscale always copies the
+    source's full-length audio in, so a pipe that dies mid-encode leaves a
+    short video beside complete audio and the *container* still reports full
+    length. Reading container duration passed a file missing 60% of its
+    video. Measured shape: 4.08s/102-frame video, 10s audio, container 10s."""
+    source = media(frames=250, duration=10.0, size=259_392)
+    output = media(frames=102, duration=4.08, size=159_431, container_duration=10.0)
+    result = evaluate(source, output)
+    assert result.exit_code == 3
+    assert "truncated" in result.message.lower()
+    assert "pass" not in result.message.lower()
+
+
+def test_truncation_caught_by_frame_count_when_duration_looks_fine():
+    """The two truncation signals are independent: a container that reports a
+    plausible duration but far too few frames must still fail."""
+    source = media(frames=250, duration=10.0)
+    output = media(frames=100, duration=10.0)
+    result = evaluate(source, output)
+    assert result.exit_code == 3
+    assert "frame count" in result.message.lower()
+
+
+def test_pass_path_survives_an_unreported_source_size():
+    """Regression, code review finding #2: size_ratio is None when ffprobe
+    omits format.size, and the pass path used to format it -> TypeError."""
+    result = evaluate(media(size=0), media(size=500))
+    assert result.exit_code == 0
+    assert result.size_ratio is None
+    assert "unavailable" in result.message.lower()
 
 
 def test_ratio_exceeded_fails_distinctly_from_truncation():

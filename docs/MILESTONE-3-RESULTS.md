@@ -152,6 +152,17 @@ All three tiers are named, every metric is reported as `None` rather than as a f
 word "broken" leads. A non-video file and a missing path both return **1**, not 2 — a precondition
 failure is not a verdict.
 
+**Correction — a fourth way to overstate the denominator, found by a later code review and fixed.**
+`sample_timestamps` returned `[0.0] * count` when the duration was unknown, so every sample landed on
+frame 0 and the report claimed `frames_usable=20` having examined **one frame twenty times**. That is
+the same failure this rule exists to prevent, arriving through the sampling layer rather than the
+metric layer. Two changes: `probe_video` now recovers a duration from the video stream, then from
+frames ÷ frame rate via `-count_packets`, before falling back to the container (a `.ts` capture with no
+container duration now probes correctly at 10.0s instead of 0), and `run()` **refuses outright** when
+the duration is still unknown rather than sampling, saying so in those terms. `sample_timestamps` now
+returns a single timestamp rather than `count` copies of zero, so it cannot fabricate a denominator
+even if called directly.
+
 ## Chaining (`reel_candidacy.py && reel_upscale.py`)
 
 The reason the exit code carries the verdict. Verified both directions:

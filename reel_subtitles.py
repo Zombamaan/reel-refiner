@@ -163,13 +163,21 @@ def run(
 
     with tempfile.TemporaryDirectory(prefix="reel_subtitles_") as tmp:
         tmp_path = Path(tmp)
-        print(f"extracting audio from {video_path.name} ...")
-        audio_path = extract_audio(video_path, tmp_path)
+        try:
+            print(f"extracting audio from {video_path.name} ...")
+            audio_path = extract_audio(video_path, tmp_path)
 
-        print(f"transcribing with faster-whisper ({model_size}, device={device}, task=translate) ...")
-        segments, detected_src_lang, src_lang_prob, elapsed = transcribe(
-            audio_path, device, model_size, source_language,
-        )
+            print(f"transcribing with faster-whisper ({model_size}, device={device}, task=translate) ...")
+            segments, detected_src_lang, src_lang_prob, elapsed = transcribe(
+                audio_path, device, model_size, source_language,
+            )
+        except RuntimeError as e:
+            # Every other failure in this tool returns a documented exit code
+            # with a "usage error:" message; a file with no audio stream used
+            # to produce a raw traceback instead. Same exit code either way —
+            # this just keeps the module to its own contract.
+            print(f"usage error: {e}", file=sys.stderr)
+            return 1
         print(f"  source language detected: {detected_src_lang} (p={src_lang_prob:.3f}), "
               f"{len(segments)} segments, {elapsed:.1f}s wall time on {device}")
 
@@ -220,9 +228,21 @@ def main(argv=None) -> int:
     parser.add_argument("--language", default=None,
                          help="source spoken language code, e.g. 'ja' (default: auto-detect)")
     parser.add_argument("--target-lang", default="en",
-                         help="expected output language for the §8 check (default: en)")
+                         help="expected output language for the §8 check (default: en, and en only "
+                              "— see below)")
     parser.add_argument("--confidence-threshold", type=float, default=DEFAULT_THRESHOLD)
     args = parser.parse_args(argv)
+
+    if args.target_lang != "en":
+        # transcribe() runs task="translate", and Whisper's translate task
+        # emits English and nothing else. Any other value would produce
+        # English output and then fail the §8 check with "wrong language" —
+        # rejecting the flag up front beats a confusing failure after the run.
+        parser.error(
+            f"--target-lang {args.target_lang!r} is not achievable: this tool runs Whisper's "
+            "translate task, which only ever emits English. Use srt_verify.py directly to check "
+            "an existing .srt against another language."
+        )
 
     return run(
         args.input, out_dir=args.out, device=args.device, model_size=args.model,
