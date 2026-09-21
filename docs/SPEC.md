@@ -33,7 +33,9 @@ Invoked manually and reactively. No queue, no scheduler, no shared state between
   playback shell). `04_` §2 uses the same older numbering.
 - **Not a translation-quality tool.** The owner's own bar is gist quality (`15_`: *"loose
   translation... the gist of speech is fine"*), not FunscriptToolbox's manual-review path.
-  Nothing here does contextual re-translation or human-in-the-loop correction.
+  Nothing here does contextual re-translation or human-in-the-loop correction. This is about not
+  *improving* translation quality — it says nothing about *measuring* it for backend selection,
+  which is a build-time concern, not a product feature. See §9's backend-selection tooling.
 - **Not a provenance/reconciliation system.** Seam S5 (`09_Interface_Contracts.md`) — marking
   processed output as "my upscale" for Program 4's adjudication — is real but deferred to
   after Program 4 exists. See §5 and §13.
@@ -142,6 +144,13 @@ fail distinctly on zero: a subtitle file with zero cues is "examined nothing," n
 check passed"; a candidacy run that sampled zero frames is "broken," not "no defects found."
 This is the one general-quality rule this program inherits — see §10.
 
+**Translation accuracy is deliberately not a row here** (`docs/SPEC-FEEDBACK.md` finding #7,
+resolved this way rather than by adding a fourth row). Every row above is something the tool
+computes on *every* real invocation. Translation accuracy can't be — it needs a reference
+translation to score against, which doesn't exist for an arbitrary real clip the owner points the
+tool at. It's real, and it's necessary for choosing a backend, but it's build-time evaluation
+tooling, not a per-run product guarantee — see §9.
+
 ## 9. Reference material
 
 Per D18 (`01_` — reference implementation, not extraction): no Studio Loom code is reused
@@ -162,6 +171,15 @@ milestone passed using a fourth, unnamed one:
 | `15_Capture_P3_Processing.md`, Subtitles → The replacement | `whisper "clip.mp4" --model medium --language Japanese --task translate --output_format srt` (`openai-whisper`) | The capture's own worked example, named nowhere in this table before milestone 1. Evaluated on a proven cu130/sm_120 torch stack: the model object reports being GPU-resident throughout, but `transcribe()` intermittently raises its own internal CPU-fallback warning mid-run, with output length varying run to run on identical input. Not depended on for that reliability reason |
 | Topaz Video AI 7.1.5, the `tvai_up` FFmpeg filter | Piping `tvai_up` straight into an H.265/AV1 encode at a chosen CRF, one command | The upscale wrapper — `15_` names this the fix for the 5–10× size problem |
 | `04_Claude_Boundaries.md` §1 | The instrumentation requirement for anything judged visually | Candidacy analyser's metric design |
+
+**Backend-selection tooling** (`docs/SPEC-FEEDBACK.md` finding #7): the table above compares
+candidates by whether they run at all. Choosing between candidates that *do* run needed a number,
+not an assertion — `scripts/score_srt.py` (chrF and cue-timing overlap against a reference
+translation) and `scripts/fleurs_baseline.py` (the same, against a public benchmark) exist for
+that. Deliberately **not** a §8 Class A row: they require a reference translation the tool itself
+never has for a real clip, so they can't run on every invocation the way §8's rows do. Build-time
+evaluation tooling, not a shipped feature — but not disposable either, per §2: their durable value
+is as a regression baseline for the next backend or model change.
 
 ## 10. Process tier
 

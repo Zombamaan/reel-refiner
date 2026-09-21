@@ -118,9 +118,11 @@ Do not add any of these. Each was decided against, not overlooked:
 - **No demosaicing or decensoring.** Out of scope portfolio-wide.
 - **No translation-quality work** — no contextual re-translation, no human-in-the-loop review. Gist
   quality is the stated bar. This is about not *improving* translation, not about never *measuring*
-  it: `scripts/score_srt.py` and `scripts/fleurs_baseline.py` already exist to give the gist-quality
-  bar a number instead of an assertion — that's a different thing from what this bullet forbids, but
-  the spec itself doesn't clearly draw that line yet (`docs/SPEC-FEEDBACK.md` finding #7, still open).
+  it: `scripts/score_srt.py` and `scripts/fleurs_baseline.py` exist to give the gist-quality bar a
+  number instead of an assertion, scoped as backend-selection/regression dev tooling, not a product
+  feature — a real clip has no reference translation to score against, so they can't run on every
+  invocation the way the shipped tool's checks do (`docs/SPEC.md` §9, `docs/SPEC-FEEDBACK.md`
+  finding #7).
 - **No provenance marking or pipeline integration.** The program it would feed does not exist yet.
 - **No process ceremony.** No append-only decision log, no git hooks, no propose-then-confirm
   confirmation flow. This is deliberate: the specification says this two-day deliverable would cost

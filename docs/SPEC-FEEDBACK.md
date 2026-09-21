@@ -12,6 +12,11 @@ Format: one entry per finding, newest last.
 `docs/MILESTONE-1-RESULTS.md`, not here** — this file is for defects found in the spec, that one is
 the results record.
 
+**Status: all 9 findings from milestone 1 are resolved.** Every one either got applied directly to
+`docs/SPEC.md` (findings #1, #2, #3, #7, #9), was a confirmation needing no correction (#4, #5), was
+judged not a spec defect (#6), or was already fixed in code with a note here (#8). Nothing from
+milestone 1 is still waiting on a decision.
+
 ---
 
 ## Findings
@@ -131,6 +136,13 @@ translation, reported with the number of segments scored" — or state in §13 t
 is out of scope and delete both scripts. §2's line is about not *improving* translation quality
 (no contextual re-translation, no human-in-the-loop); measuring it is a different thing, and the
 spec should say so rather than leaving the two readings to collide.
+
+**Resolved — scoped as dev tooling, neither of the two options above.** Not a §8 Class A row (a
+real clip has no reference translation to score against, so it structurally can't run on every
+invocation like §8's other rows) and not deleted either (§9 now documents them as backend-selection
+tooling with durable regression-baseline value). §2's "not a translation-quality tool" bullet now
+says explicitly that not-improving and not-measuring are different claims, and only the first one
+was ever meant.
 
 *Source: external spec review, not discovered by building. Recorded here because this file is the
 channel back to the specification space, and the defect is in the spec rather than the code.*
