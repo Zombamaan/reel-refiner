@@ -17,6 +17,10 @@ the results record.
 judged not a spec defect (#6), or was already fixed in code with a note here (#8). Nothing from
 milestone 1 is still waiting on a decision.
 
+**Findings #10-#15 (upscale wrapper, this session) are recorded, not yet applied to `docs/SPEC.md`
+itself** — left for the owner's read, since #10 in particular changes what §9's "one command" can
+mean on this machine and is a judgment call, not a typo fix.
+
 ---
 
 ## Findings
@@ -203,3 +207,101 @@ literally name.
 Purfview's Faster-Whisper-XXL as superseded (never installed or tested here), and keeps
 `whisper-cli` and `openai-whisper` as evaluated-but-not-depended-on rows. §12 states the accepted
 candidate isn't the one originally named, pointing at §9 for the detail.
+
+### 10. §9's "`tvai_up` straight into an H.265/AV1 encode... one command" is not satisfiable on this machine
+
+**Spec says:** §9's reference-material table: *"Piping `tvai_up` straight into an H.265 or AV1 encode
+at a chosen CRF, one command."* §3's metric and §7's must-have both restate "one command" as the
+shape of the fix.
+**What actually happened:** Topaz Video AI 7.1.5's bundled ffmpeg has no software H.265/AV1 encoder —
+its encoder list is `hevc_nvenc`, `av1_nvenc`, `hevc_qsv`, `av1_qsv`, `hevc_amf`, `av1_amf`, none of
+which accept `-crf`. The only CRF-capable encoder in that binary is `libvpx-vp9`, which is neither
+H.265 nor AV1. Confirmed by direct probe (`ffmpeg -h encoder=libx265` against Topaz's own `ffmpeg.exe`
+reports *"Codec 'libx265' is not recognized"*) and by reading its build configuration
+(`--enable-nvenc --enable-libvpx --enable-libaom`, no `--enable-libx265`, no `--enable-libsvtav1`).
+A genuinely single-process, true-CRF `tvai_up`-to-H.265/AV1 command does not exist on this machine.
+**Suggested correction:** Read "one command" as "one pipeline the owner runs with one invocation of
+this wrapper," not "one ffmpeg process." `reel_upscale.py` runs `tvai_up` in Topaz's ffmpeg piped into
+a *second*, system ffmpeg process (which does have `libx265`/`libsvtav1`) for the CRF encode —
+verified working end to end (§8's numbers are in `docs/MILESTONE-2-RESULTS.md`). The owner still runs
+exactly one command; two ffmpeg processes run underneath it. Update §9's phrasing if "one command" is
+meant to promise a single process specifically, since that promise can't be kept here.
+
+### 11. `TVAI_MODEL_DIR` is mandatory and appears nowhere in the spec or the capture
+
+**Spec says:** Nothing — §4's "Other" section confirms Topaz 7.1.5 is installed and licensed, but
+records no environment variable, install path, or model directory.
+**What actually happened:** Running Topaz's `tvai_up` filter without `TVAI_MODEL_DIR` set fails
+immediately with `Model not found: <name>`, exit -22, before any GPU work starts — confirmed by
+probing with and without the variable set. The correct value
+(`C:\ProgramData\Topaz Labs LLC\Topaz Video AI\models`) was found only by reading Topaz's own log file
+(`%APPDATA%\Topaz Labs LLC\Topaz Video AI\logs\*.tzlog`, line `TVAI_MODEL_DIR, veaiDataFolder ...`),
+not from any Topaz or repo documentation. A second variable, `TVAI_MODEL_DATA_DIR`, set to the same
+path, was present in every working probe in this session; not confirmed independently required, but
+carried along rather than risking removing it without re-testing.
+**Suggested correction:** Record `TVAI_MODEL_DIR` (and `TVAI_MODEL_DATA_DIR`) as a required piece of
+this machine's Topaz setup, the same way §4 records the CUDA DLL search-path requirement for
+faster-whisper. `reel_upscale.py` sets both itself (`REEL_TVAI_MODEL_DIR` env-overridable, matching
+the `REEL_FFMPEG`/`REEL_BCOMPARE` convention) so the owner never has to know this by hand.
+
+### 12. No default CRF is specified anywhere in the spec
+
+**Spec says:** §9 says "at a chosen CRF"; nowhere states what that value should default to.
+**What actually happened:** Not a defect exactly — SPEC.md §2/§13 permanently keeps *model* choice
+the owner's manual call, and the capture never treats CRF the same way, so its absence reads as an
+oversight rather than a deliberate parallel to the model-selection rule.
+**Suggested correction:** Resolved by owner decision this session, recorded here rather than guessed:
+default CRF is **20** (`reel_upscale.py`'s `DEFAULT_CRF`), chosen deliberately conservative — an
+upscale spends real GPU time synthesizing high-frequency detail, and a default that discards more of
+it than necessary would be working against the tool's own output. `--crf` remains fully overridable
+per run. If the owner ever wants this locked to "no default, same as `--model`," that's a one-line
+change (`required=True`) with no other structural impact.
+
+### 13. Total silence on audio, container, and metadata passthrough
+
+**Spec says:** Nothing. Neither §9 nor CAPTURE.md's upscale section mentions audio codec handling,
+stream mapping, container choice, chapters, or metadata passthrough anywhere.
+**What actually happened:** These aren't optional details — a raw video pipe (the only route to a
+true CRF encode per finding #10) carries no audio at all, so an upscale wrapper that only piped
+`tvai_up`'s output would silently produce a video-only file. This had to be designed from scratch:
+the original file is given to the encoder as a *second* input, its audio is mapped through untouched
+(`-map 1:a? -c:a copy`), and its container metadata is copied by default (`-map_metadata 1`,
+`--no-keep-metadata` to opt out). Verified end to end: output audio matches source audio's codec
+(`aac`) and duration (20.00s vs 20.00s) exactly — see `docs/MILESTONE-2-RESULTS.md`.
+**Suggested correction:** Record the audio/metadata passthrough behavior in §9 or §13 as a stated
+design decision, not a silent implementation detail — the next person building against this spec
+should not have to discover independently that a naive `tvai_up`-into-encoder pipe drops audio.
+
+### 14. No video clip exists in `samples/` — milestone 2 could not meet milestone 1's "one real clip" bar the same way
+
+**Spec says:** §12's precedent (milestone 1) is "one real clip end to end." Nothing in §12 covers the
+upscale wrapper specifically — see its own note that milestone 1 deliberately left it for later.
+**What actually happened:** `samples/2208/source.wav` (the only sample clip in this repo) is audio
+only — there is no video clip anywhere in `samples/` to upscale. Getting a real clip requires the
+owner (the same `yt-dlp`-against-a-live-URL friction finding #6 already recorded), so this session
+verified against a synthetically generated degraded clip instead (`ffmpeg testsrc2` + a sine-wave
+audio track, hard-compressed to imitate a low-quality web source) rather than blocking on one.
+**Suggested correction:** Not a spec defect to fix — recorded per `CLAUDE.md`'s instruction not to
+silently substitute without saying so. Build state is **built-partial**: the pipe, the CRF encode,
+audio passthrough, and both denominator-rule gates (truncation, size ratio) are all proven against
+real ffmpeg processes and a real (if synthetic) file, but no actual codec/interlacing/multi-track-audio
+variety of a real clip has gone through yet. See `docs/MILESTONE-2-RESULTS.md`.
+
+### 15. `tvai_up` segfaults, rather than erroring cleanly, on fewer than 4 input frames
+
+**Spec says:** Nothing — no capture or spec text anticipates any `tvai_up` failure mode, clean or
+otherwise, distinct from the general GPU-risk rule in §4.
+**What actually happened:** A one-frame `tvai_up` smoke-test probe (`testsrc2=size=64x64:rate=1:
+duration=1`, intended as a fast preflight sanity check) segfaulted Topaz's ffmpeg outright — exit code
+139/SIGSEGV, no stderr, no ffmpeg error message at all. Bisected on this machine: 1, 2, and 3 input
+frames all segfault identically; 4 frames and above run cleanly, with a normal, informative ffmpeg
+error for an actually-invalid model name at 8 frames. This reads as an unfilled temporal/lookahead
+buffer the model expects before it will run, not anything specific to a bad argument — this is a
+**third** GPU/CUDA-adjacent failure signature for the §4 list, alongside `CUBLAS_STATUS_NOT_SUPPORTED`
+(crashes) and the silent 10×-slower-while-claiming-CUDA case from milestone 1 (degrades without
+error): a filter that crashes the whole process on a too-short input instead of reporting "insufficient
+frames" or similar.
+**Suggested correction:** Add to §4's GPU-risk list: **never probe or preflight-check a Topaz `tvai_*`
+filter with fewer than a handful of frames** — a segfault under a preflight check will otherwise read
+as this tool's own crash rather than an upstream limitation. `reel_upscale.py`'s preflight smoke test
+uses 8 frames specifically to stay clear of this threshold with margin.

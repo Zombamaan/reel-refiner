@@ -38,10 +38,20 @@ the GPU risk below is untested, and proving it either way de-risks everything el
 
 **Stop when it passes and report.** Do not continue into the second tool.
 
-**Status: done.** Milestone 1 passed on both `--device cuda` and `--device cpu` against a real clip —
-see `docs/MILESTONE-1-RESULTS.md` for the numbers and `docs/SPEC-FEEDBACK.md` for what building it
-found wrong with the spec. The next tool in line, when picked up, is the upscale wrapper (§7's
-ordering) or the candidacy analyser — owner's call which.
+**Status, subtitles: done.** Milestone 1 passed on both `--device cuda` and `--device cpu` against a
+real clip — see `docs/MILESTONE-1-RESULTS.md` for the numbers and `docs/SPEC-FEEDBACK.md` for what
+building it found wrong with the spec.
+
+**Status, upscale wrapper: built-partial.** `reel_upscale.py` pipes Topaz's `tvai_up` into a
+system-ffmpeg CRF encode (Topaz's own bundled ffmpeg has no software H.265/AV1 encoder — see
+`docs/SPEC-FEEDBACK.md` finding #10), with the §8 encode-size check (`upscale_verify.py`) and its own
+denominator rule (truncation + size-ratio gates, both exercised). Verified end to end on both
+`--device cuda`/`auto` and `--device cpu` — see `docs/MILESTONE-2-RESULTS.md`. Partial because no real
+clip has gone through yet: no video clip exists in this repo's `samples/`, so verification used a
+synthetically generated degraded clip instead. Findings #10–#15 in `docs/SPEC-FEEDBACK.md` are what
+building it found wrong with or missing from the spec.
+
+**Next up: the candidacy analyser** — the last of the three tools in §7.
 
 Dev/test clips live in `samples/<clip>/`, never committed — `source.<ext>` is what gets fed to the
 tool, `reference.<lang>.<ext>` is ground-truth material for scoring only, never fed to the tool
