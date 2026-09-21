@@ -47,7 +47,10 @@ backend, with no crash and no error. The predates-2025 rule would have cleared t
 compiled against," not release date. Recommend checking a CUDA-enabled tool's own printed arch list
 against `torch.cuda.get_device_capability()` before trusting a non-crashing "used the GPU" claim, and
 add "10x+ slower than CPU while claiming to use CUDA" as a second failure signature alongside
-`CUBLAS_STATUS_NOT_SUPPORTED` — this one doesn't crash, it silently degrades.
+`CUBLAS_STATUS_NOT_SUPPORTED` — this one doesn't crash, it silently degrades. Also confirms
+`CAPTURE.md`'s open task — *"`whisper-cli` would be faster on GPU and should support translation —
+verify with `whisper-cli -h`"* — half right: `-tr, --translate` is genuinely present (confirmed via
+`whisper-cli -h`), but "faster on GPU" doesn't hold for this specific build; see above.
 
 ### 3. §12 names two candidates; the capture's own replacement command is a third
 
@@ -149,3 +152,24 @@ finding's second point: both device runs coexist automatically, no manual `mv` n
 `docs/MILESTONE-1-RESULTS.md`'s "Reproducing these numbers" for the corrected commands.
 
 *Source: external spec review, not discovered by building.*
+
+### 9. The milestone's winning backend is neither candidate §9/§12 literally name
+
+**Spec says:** §9's table names exactly two subtitle candidates: "Purfview Faster-Whisper-XXL" and
+whisper.cpp's `whisper-cli`. §12's milestone condition is "proving that whisper-cli (or a fixed
+Faster-Whisper-XXL) actually runs on the owner's GPU."
+**What actually happened:** `whisper-cli`'s CPU path worked, but its CUDA build silently degrades
+10× on this card (finding #2) — not depended on for GPU use. Faster-Whisper-XXL specifically was
+never installed or tested at all; the milestone passed using a third, related-but-distinct artifact
+instead: `pip install faster-whisper` (SYSTRAN's package, ctranslate2 4.8.2). Both projects
+sit on the same underlying `faster-whisper`/ctranslate2 technology, but "a fixed Faster-Whisper-XXL"
+specifically meant Purfview's bundle (the one that failed with `CUBLAS_STATUS_NOT_SUPPORTED`, per §4)
+getting fixed — not a different distribution of the same library being installed instead. Finding #1
+mentions installing `faster-whisper`/ctranslate2 from PyPI as acquisition overhead but never states
+this plainly: §12's literal pass condition was not met by either named candidate; it was met by a
+substitution.
+**Suggested correction:** Either broaden §9/§12 to name "a faster-whisper/ctranslate2 distribution"
+generically rather than Purfview's specific bundle, or treat this as a second, independent
+substitution alongside finding #3's (openai-whisper vs CAPTURE's worked example) — the pattern is
+now two-for-two: every backend actually evaluated across this build was something the spec didn't
+literally name.

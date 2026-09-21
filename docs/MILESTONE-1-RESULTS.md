@@ -93,8 +93,9 @@ changes.
 
 All commands assume `.venv/` is set up per `requirements.txt` and `samples/2208/source.wav` /
 `samples/2208/reference.en.srt` exist (fetched per `docs/SPEC-FEEDBACK.md` finding #6). Both
-`samples/` and `out/` are git-ignored, so none of this is committed here — see
-`docs/SPEC.md`/CLAUDE.md's `samples/<clip>/<purpose>.ext` and `out/<clip>/` conventions.
+`samples/` and `out/` are git-ignored, so none of this is committed here — see `CLAUDE.md`'s
+`samples/<clip>/<purpose>.ext` and `out/<clip>/` conventions (a dev/test-only exception to
+`docs/SPEC.md` §4's general "output next to input" rule).
 
 No `--out` needed, and no manual renaming between runs — `reel_subtitles.py` detects the sample clip
 and device-suffixes automatically, so CUDA and CPU outputs coexist:

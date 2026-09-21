@@ -38,8 +38,22 @@ the GPU risk below is untested, and proving it either way de-risks everything el
 
 **Stop when it passes and report.** Do not continue into the second tool.
 
-The test clip lives in `samples/`, which is not committed. Never write outputs there —
-write to `out/`, which is also not committed.
+**Status: done.** Milestone 1 passed on both `--device cuda` and `--device cpu` against a real clip —
+see `docs/MILESTONE-1-RESULTS.md` for the numbers and `docs/SPEC-FEEDBACK.md` for what building it
+found wrong with the spec. The next tool in line, when picked up, is the upscale wrapper (§7's
+ordering) or the candidacy analyser — owner's call which.
+
+Dev/test clips live in `samples/<clip>/`, never committed — `source.<ext>` is what gets fed to the
+tool, `reference.<lang>.<ext>` is ground-truth material for scoring only, never fed to the tool
+itself. **Never write outputs there** — this is the one exception to the File Safety rule below,
+scoped specifically to this repo's own test clips. Output for a `samples/` clip goes to `out/<clip>/`
+instead (also not committed), device-suffixed (`en.cuda.srt`, `en.cpu.srt`) so testing multiple
+devices against the same clip doesn't overwrite one result with the other. Running a tool against a
+`samples/` clip that has a matching `reference.<lang>.*` file also (re)generates
+`samples/<clip>/compare_in_beyond_compare.bat`, a one-click launcher for eyeballing the output
+against ground truth (`dev_compare.py`; `REEL_BCOMPARE` env var to override the exe path).
+
+A **real clip** (anywhere outside `samples/`) is not covered by that exception — see File Safety.
 
 ## The GPU assumption — the main risk in this repo
 
@@ -55,7 +69,10 @@ Consequences, both required:
   answer and sometimes the right one.
 
 Report which candidate ran, on which device, and how long it took. That result is part of the
-milestone, not an aside.
+milestone, not an aside. **Done for subtitles** — `docs/MILESTONE-1-RESULTS.md` has the numbers;
+`docs/SPEC-FEEDBACK.md` has the backend comparison (faster-whisper chosen over whisper.cpp and
+openai-whisper) and the correction this found for the GPU-risk rule above (compiled SM architecture
+is the real risk factor, not release date — a 2026-built binary still failed this way).
 
 ## The denominator rule
 
@@ -88,6 +105,9 @@ These tools write outputs next to inputs the owner names on the command line. Th
 library and no destructive path — **as long as an output name is always distinct from its input.**
 Never write over a source file. Never move or rename one.
 
+The one exception is this repo's own `samples/` dev/test clips, covered above — never write there,
+`out/<clip>/` instead. Everywhere else, next to the input is the rule.
+
 ## What this repo deliberately does not do
 
 Do not add any of these. Each was decided against, not overlooked:
@@ -97,7 +117,10 @@ Do not add any of these. Each was decided against, not overlooked:
   permanently the owner's call.
 - **No demosaicing or decensoring.** Out of scope portfolio-wide.
 - **No translation-quality work** — no contextual re-translation, no human-in-the-loop review. Gist
-  quality is the stated bar.
+  quality is the stated bar. This is about not *improving* translation, not about never *measuring*
+  it: `scripts/score_srt.py` and `scripts/fleurs_baseline.py` already exist to give the gist-quality
+  bar a number instead of an assertion — that's a different thing from what this bullet forbids, but
+  the spec itself doesn't clearly draw that line yet (`docs/SPEC-FEEDBACK.md` finding #7, still open).
 - **No provenance marking or pipeline integration.** The program it would feed does not exist yet.
 - **No process ceremony.** No append-only decision log, no git hooks, no propose-then-confirm
   confirmation flow. This is deliberate: the specification says this two-day deliverable would cost

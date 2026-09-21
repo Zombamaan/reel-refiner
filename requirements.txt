@@ -26,9 +26,10 @@ srt==3.5.3
 # milestone; see docs/SPEC-FEEDBACK.md).
 sacrebleu==2.6.0
 
-# The subtitle backend itself (SPEC.md §9 candidate #1, modernized — see
-# docs/SPEC-FEEDBACK.md #3 for why this one and not whisper-cli or
-# openai-whisper). Pulls in ctranslate2 4.8.2.
+# The subtitle backend itself (SPEC.md §9 candidate #1, modernized — a
+# different artifact from the Faster-Whisper-XXL bundle §9 actually names,
+# see docs/SPEC-FEEDBACK.md #9). See findings #2-#3 for why this one and not
+# whisper-cli or openai-whisper. Pulls in ctranslate2 4.8.2.
 faster-whisper==1.2.1
 
 # CUDA 12.x runtime for ctranslate2 (it links cublas64_12.dll / cudnn64_9.dll
