@@ -31,6 +31,10 @@ Thin," a two-day deliverable).
 scope it down to "verify one already-installed candidate," and have the owner pre-install one before
 the session starts.
 
+**Resolved.** §9 and §12 now state plainly that neither original candidate was installed and that
+acquiring/evaluating candidates from scratch was real, unbudgeted effort against the "Below Thin"
+effort class — recorded as history rather than rescoped, since the milestone is already done.
+
 ### 2. §4's GPU rule has no converse — it can only ever justify suspicion, never clearance
 
 **Spec says:** "Assume any tool bundling its own CUDA libraries and predating 2025 is broken on the
@@ -52,6 +56,10 @@ add "10x+ slower than CPU while claiming to use CUDA" as a second failure signat
 verify with `whisper-cli -h`"* — half right: `-tr, --translate` is genuinely present (confirmed via
 `whisper-cli -h`), but "faster on GPU" doesn't hold for this specific build; see above.
 
+**Resolved.** §4 now states the risk factor as compiled SM architecture rather than release date,
+names the non-crashing "claims CUDA, isn't faster" failure signature alongside
+`CUBLAS_STATUS_NOT_SUPPORTED`, and gives the `torch.cuda.get_device_capability()` cross-check.
+
 ### 3. §12 names two candidates; the capture's own replacement command is a third
 
 **Spec says:** §9's reference-material table lists exactly two subtitle candidates: Faster-Whisper-XXL
@@ -66,6 +74,10 @@ varied wildly run to run on identical input (78–670 characters for the same 30
 on for that reason, independent of it being off-spec.
 **Suggested correction:** Either add `openai-whisper` to §9 as a third candidate, or note explicitly
 that CAPTURE's worked example and SPEC's candidate list disagree.
+
+**Resolved, together with finding #9 below.** §9's table now has a row for `openai-whisper`
+(CAPTURE's worked example) alongside the two originally-named candidates and the one actually
+accepted — all four in one table, with why each was or wasn't depended on.
 
 ### 4. ffmpeg 8.1.2 here *does* ship `--enable-whisper` — CAPTURE's doubt is resolved, not confirmed
 
@@ -173,3 +185,9 @@ generically rather than Purfview's specific bundle, or treat this as a second, i
 substitution alongside finding #3's (openai-whisper vs CAPTURE's worked example) — the pattern is
 now two-for-two: every backend actually evaluated across this build was something the spec didn't
 literally name.
+
+**Resolved — took the "formally accept the substitution" path**, not the "broaden the wording" one.
+§9's table now names `pip install faster-whisper` as the accepted candidate outright, marks
+Purfview's Faster-Whisper-XXL as superseded (never installed or tested here), and keeps
+`whisper-cli` and `openai-whisper` as evaluated-but-not-depended-on rows. §12 states the accepted
+candidate isn't the one originally named, pointing at §9 for the detail.

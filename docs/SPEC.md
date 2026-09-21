@@ -72,13 +72,27 @@ to an input the owner named on the command line. No destructive path exists as l
 output name is always distinct from its input.
 
 ### GPU / CUDA — carried in for this session
-**Assume any tool bundling its own CUDA libraries and predating 2025 is broken on the owner's
-GPU until proven otherwise.** Entry 53 (`01_`) records two instances of exactly this failure
-already: Faster-Whisper-XXL r192.3.4 and SyncPlayer 2.0.0.2's LibTorch, both against the
-owner's Blackwell/sm_120 card. Consequence for this spec: neither whisper candidate in §9 is
-depended on until milestone 1 proves it runs, and both need a `--device cpu` fallback path so
-a broken GPU build doesn't block the tool entirely — CPU is slower, but subtitle generation
-here isn't latency-sensitive.
+**Corrected by milestone 1** (`docs/SPEC-FEEDBACK.md` finding #2): the risk factor is **which SM
+architectures a CUDA binary was compiled against**, not its release date. A 2026-built whisper.cpp
+CUDA binary still failed this way — compiled without sm_120 in its architecture list — while a
+2026 `torch`/`ctranslate2` build with sm_120 present ran real kernels on this card correctly.
+Release date can only ever justify suspicion; it can never justify clearance, so treat "recently
+built" as no evidence either way.
+
+Entry 53 (`01_`) records two instances of the *crashing* form of this failure already:
+Faster-Whisper-XXL r192.3.4 and SyncPlayer 2.0.0.2's LibTorch, both against the owner's
+Blackwell/sm_120 card, both with `CUBLAS_STATUS_NOT_SUPPORTED`. Milestone 1 found a second,
+**non-crashing** failure signature that's just as disqualifying: a tool can claim to use CUDA, run
+without error, and still be **10×+ slower than its own CPU path** because it silently falls back to
+an unoptimized path for an unsupported architecture. Before trusting any CUDA-enabled tool's "used
+the GPU" claim, check its own printed architecture list (or equivalent) against
+`torch.cuda.get_device_capability()` for this card, and treat a CUDA run that isn't meaningfully
+faster than CPU as a second kind of failure, not a slow success.
+
+Consequence for this spec, unchanged: neither whisper candidate in §9 is depended on until
+milestone 1 proves it runs, and both need a `--device cpu` fallback path so a broken GPU build
+doesn't block the tool entirely — CPU is slower, but subtitle generation here isn't
+latency-sensitive.
 
 ### Other
 Topaz Video AI: perpetual licence, version 7.1.5 (the final non-subscription release).
@@ -133,10 +147,19 @@ This is the one general-quality rule this program inherits — see §10.
 Per D18 (`01_` — reference implementation, not extraction): no Studio Loom code is reused
 here; this program has no reuse target there. Reference material is external tooling.
 
+**Subtitle candidates, corrected by milestone 1** (`docs/SPEC-FEEDBACK.md` findings #1, #3, #9): the
+two candidates originally named below were reference material to *read*, not to acquire, and neither
+was actually installed on the machine milestone 1 ran on — standing the milestone up required
+installing and evaluating candidates from scratch, which is not free effort against the "Below Thin"
+effort class stated at the top of this document. Of the three backends actually evaluated, the
+milestone passed using a fourth, unnamed one:
+
 | Source | What to read | For |
 |---|---|---|
-| `06_Spec_Readiness.md` §3, item 7 status | Purfview Faster-Whisper-XXL's usage (`-l ja -m medium --task translate`) | Subtitle candidate #1 — documented as blocked on the owner's GPU with `CUBLAS_STATUS_NOT_SUPPORTED` until a newer release or `--device cpu` |
-| `15_Capture_P3_Processing.md`, Subtitles → The replacement | `whisper-cli -h` (whisper.cpp) | Subtitle candidate #2 — untested for `--task translate` support and for its own CUDA build's provenance; subject to the same until-proven-otherwise assumption, §4 |
+| `pip install faster-whisper` (SYSTRAN, ctranslate2-based) | `WhisperModel(..., device=..., compute_type=...)`, `task="translate"` | **Accepted candidate**, verified on this machine on both `--device cuda` (sm_120, needs `nvidia-cublas-cu12`/`nvidia-cudnn-cu12` on the DLL search path) and `--device cpu`. A different distribution of the same underlying library as Purfview's Faster-Whisper-XXL — that specific bundle was never installed here, and its `CUBLAS_STATUS_NOT_SUPPORTED` failure (entry 53, §4) was never re-tested against this one |
+| `06_Spec_Readiness.md` §3, item 7 status | Purfview Faster-Whisper-XXL's usage (`-l ja -m medium --task translate`) | Originally named subtitle candidate #1. Superseded above — never installed or tested on this machine |
+| `15_Capture_P3_Processing.md`, Subtitles → The replacement | `whisper-cli -h` (whisper.cpp) | Originally named subtitle candidate #2. `--translate` confirmed present; CPU path works, but the CUDA build tested (b5130, `whisper-cublas-12.4.0`) was compiled without sm_120 in its architecture list and ran 10× *slower* than its own CPU path while still claiming to use CUDA (§4's restated GPU rule) — not depended on for GPU use, viable CPU-only |
+| `15_Capture_P3_Processing.md`, Subtitles → The replacement | `whisper "clip.mp4" --model medium --language Japanese --task translate --output_format srt` (`openai-whisper`) | The capture's own worked example, named nowhere in this table before milestone 1. Evaluated on a proven cu130/sm_120 torch stack: the model object reports being GPU-resident throughout, but `transcribe()` intermittently raises its own internal CPU-fallback warning mid-run, with output length varying run to run on identical input. Not depended on for that reliability reason |
 | Topaz Video AI 7.1.5, the `tvai_up` FFmpeg filter | Piping `tvai_up` straight into an H.265/AV1 encode at a chosen CRF, one command | The upscale wrapper — `15_` names this the fix for the 5–10× size problem |
 | `04_Claude_Boundaries.md` §1 | The instrumentation requirement for anything judged visually | Candidacy analyser's metric design |
 
@@ -167,10 +190,15 @@ Run the subtitle one-liner end to end on one real clip the owner has in a non-En
 language, through to a verified-English `.srt`. Deliberately not the upscale wrapper, even
 though `06_` calls the candidacy analyser "the only genuinely new piece" — the subtitle path
 is where §4's GPU assumption is untested and where pre-work item 7 is currently blocked.
-Proving that whisper-cli (or a fixed Faster-Whisper-XXL) actually runs on the owner's GPU, or
-confirming CPU fallback is fast enough to live with, is the milestone that de-risks the rest of
-the program. It exercises the whole subtitle must-have and its language-verification check in
-one shot on a real case.
+Proving that a whisper-family backend actually runs on the owner's GPU, or confirming CPU
+fallback is fast enough to live with, is the milestone that de-risks the rest of the program. It
+exercises the whole subtitle must-have and its language-verification check in one shot on a real
+case.
+
+**Completed** (`docs/MILESTONE-1-RESULTS.md`; corrections in `docs/SPEC-FEEDBACK.md` findings #1,
+#3, #9): passed on both devices against a real clip. Proving it required installing and evaluating
+candidates from scratch — none was pre-installed — and the candidate that passed is not the one
+this section originally named; see §9's corrected table.
 
 ## 13. Out of scope for v1
 
