@@ -189,6 +189,25 @@ python reel_upscale.py samples/degraded/source.mp4 --model ahq-12 --scale 2 --cr
 python reel_upscale.py samples/degraded/source.mp4 --model ahq-12 --scale 4 --crf 20 --max-ratio 20
 ```
 
+## Two robustness fixes made during review, before the numbers above were final
+
+- **`-fps_mode passthrough`** added explicitly on the encoder's video output. `-f nut` was already
+  chosen over `yuv4mpegpipe` specifically because NUT carries real per-frame timestamps across the
+  pipe rather than an implied constant rate — `-fps_mode passthrough` makes that explicit instead of
+  relying on ffmpeg's default heuristic, so a variable-frame-rate source (common in web-sourced
+  footage, this tool's stated target) can't drift the piped video against the audio mapped in from
+  the original file. Spot-checked against a source with an irregular frame count (not evenly divisible
+  by the encode's declared rate): output video and audio stream durations both matched the source's
+  own exactly (11.000000s and 10.982993s respectively, byte-identical to the source's own ffprobe
+  output) — no drift introduced by the pipe.
+- **`--preset`'s default is now per-encoder**, not one shared string. `libsvtav1`'s `-preset` is an
+  integer (-2..13) with no named aliases at all — `--preset medium` (the old single default) fails
+  outright: `Unable to parse "preset" option value "medium"`. `hevc_nvenc` happens to accept some
+  legacy named presets including `medium`, so it was never actually broken, but now gets its own
+  `p5` default on its own p1–p7 scale rather than borrowing libx265's. Confirmed working after the fix:
+  `--encoder libsvtav1 --crf 30` (its default preset `6`) encoded the same clip to 1,737,193 bytes,
+  3.90× source.
+
 ## Real clip — not yet run
 
 This milestone's synthetic clip proves the mechanism (the pipe, the CRF encode, both gates, audio

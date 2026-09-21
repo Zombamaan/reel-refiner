@@ -79,6 +79,17 @@ ENCODER_CRF_FLAGS = {
     "hevc_nvenc": "-cq",
 }
 
+# --preset's value space isn't shared across encoders: libx265 takes named
+# presets ("medium"), libsvtav1 takes an integer -2..13 with no named
+# aliases at all ("medium" errors — confirmed), hevc_nvenc happens to accept
+# some x264-style names but its own scale is p1..p7. One default per
+# encoder, roughly "balanced speed/quality" on each one's own scale.
+ENCODER_DEFAULT_PRESETS = {
+    "libx265": "medium",
+    "libsvtav1": "6",
+    "hevc_nvenc": "p5",
+}
+
 _CONTAINER_EXTS = {"mkv", "mp4", "mov"}
 _TVAI_DEVICE_ALIASES = {"auto": "-2", "cpu": "-1"}  # else a bare GPU index, e.g. "0"
 
@@ -221,6 +232,16 @@ def run_pipe(
     if keep_metadata:
         enc_cmd += ["-map_metadata", "1"]
     enc_cmd += [
+        # -fps_mode passthrough, explicit rather than relying on the
+        # default heuristic: -f nut (not yuv4mpegpipe) was chosen precisely
+        # because it carries real per-frame timestamps across the pipe, not
+        # an implied constant rate -- passthrough keeps those timestamps
+        # verbatim into the encode instead of letting ffmpeg infer a rate
+        # and risk drifting the video against the audio mapped in from the
+        # second (original-file) input. Spot-checked against a source with
+        # an irregular frame count: output video/audio durations matched
+        # the source's own exactly, no drift introduced by the pipe.
+        "-fps_mode", "passthrough",
         "-c:v", encoder, crf_flag, str(crf), "-preset", preset,
         "-c:a", "copy",
         str(out_path),
@@ -268,7 +289,7 @@ def run(
     device: str = "auto",
     crf: float = DEFAULT_CRF,
     encoder: str = "libx265",
-    preset: str = "medium",
+    preset: str | None = None,
     pix_fmt: str = "yuv420p",
     container: str | None = None,
     keep_metadata: bool = True,
@@ -288,6 +309,8 @@ def run(
 
     if width is None and height is None and scale is None:
         scale = DEFAULT_SCALE
+    if preset is None:
+        preset = ENCODER_DEFAULT_PRESETS[encoder]
 
     resolved_container = _pick_container(video_path.suffix, container)
     out_path, is_dev_default = _build_output_path(video_path, out_dir, model, crf, resolved_container)
@@ -343,7 +366,9 @@ def main(argv=None) -> int:
                          help="default: libx265 — true CRF, per SPEC.md §9. Topaz's bundled ffmpeg has "
                               "no software H.265/AV1 encoder, so this runs in a second, system ffmpeg "
                               "process (see docs/SPEC-FEEDBACK.md)")
-    parser.add_argument("--preset", default="medium", help="encoder preset (default: medium)")
+    parser.add_argument("--preset", default=None,
+                         help="encoder preset — value space depends on --encoder, so the default does "
+                              "too: medium (libx265), 6 (libsvtav1, integer -2..13), p5 (hevc_nvenc)")
     parser.add_argument("--pix-fmt", default="yuv420p",
                          help="pipe/output pixel format (default: yuv420p; use yuv420p10le for 10-bit)")
     parser.add_argument("--device", default="auto",
