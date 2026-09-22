@@ -83,7 +83,8 @@ def probe_video(path: Path) -> dict:
     N usable frames having examined one."""
     cmd = [FFPROBE, "-v", "error", "-print_format", "json",
            "-show_format", "-show_streams", "-count_packets", str(path)]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace")
     if proc.returncode != 0:
         raise RuntimeError(f"ffprobe failed on {path}:\n{proc.stderr[-2000:]}")
     try:

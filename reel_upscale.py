@@ -158,7 +158,8 @@ def preflight(model: str, encoder: str) -> None:
             "7.1.5 is installed somewhere else — a separate, subscription-era "
             "'Topaz Video' install does not have the same binary)"
         )
-    filters = subprocess.run([TVAI_FFMPEG, "-hide_banner", "-filters"], capture_output=True, text=True)
+    filters = subprocess.run([TVAI_FFMPEG, "-hide_banner", "-filters"], capture_output=True,
+                             text=True, encoding="utf-8", errors="replace")
     if "tvai_up" not in filters.stdout:
         raise RuntimeError(f"{TVAI_FFMPEG} does not expose the tvai_up filter")
 
@@ -171,7 +172,8 @@ def preflight(model: str, encoder: str) -> None:
             "wrapper never picks a model, the name must match one exactly"
         )
 
-    encoders = subprocess.run([FFMPEG, "-hide_banner", "-encoders"], capture_output=True, text=True)
+    encoders = subprocess.run([FFMPEG, "-hide_banner", "-encoders"], capture_output=True,
+                              text=True, encoding="utf-8", errors="replace")
     if encoder not in encoders.stdout:
         raise RuntimeError(f"{FFMPEG} does not have the '{encoder}' encoder available")
 
@@ -187,7 +189,8 @@ def preflight(model: str, encoder: str) -> None:
         "-vf", f"tvai_up=model={model}:scale=1:download=0",
         "-f", "null", "-",
     ]
-    smoke = subprocess.run(smoke_cmd, capture_output=True, text=True, env=_tvai_env())
+    smoke = subprocess.run(smoke_cmd, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", env=_tvai_env())
     if smoke.returncode != 0:
         raise RuntimeError(f"tvai_up smoke test failed for model '{model}':\n{smoke.stderr[-2000:]}")
 
@@ -253,7 +256,8 @@ def run_pipe(
         with open(tvai_log_path, "w", encoding="utf-8", errors="replace") as tvai_log_fh:
             producer = subprocess.Popen(tvai_cmd, stdout=subprocess.PIPE, stderr=tvai_log_fh, env=_tvai_env())
             try:
-                consumer = subprocess.Popen(enc_cmd, stdin=producer.stdout, stderr=subprocess.PIPE, text=True)
+                consumer = subprocess.Popen(enc_cmd, stdin=producer.stdout, stderr=subprocess.PIPE,
+                                            text=True, encoding="utf-8", errors="replace")
             except OSError:
                 # The encoder never started (missing binary — reachable via
                 # --skip-preflight, which bypasses the -encoders check). Topaz

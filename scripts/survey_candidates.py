@@ -83,7 +83,8 @@ def probe(path: Path) -> dict | None:
     cmd = [FFPROBE, "-v", "error", "-print_format", "json",
            "-show_format", "-show_streams", str(path)]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60,
+                              encoding="utf-8", errors="replace")
     except (subprocess.TimeoutExpired, OSError):
         return None
     if proc.returncode != 0:

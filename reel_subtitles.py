@@ -78,7 +78,8 @@ def extract_audio(video_path: Path, workdir: Path) -> Path:
         "-ar", "16000", "-ac", "1", "-vn",
         str(audio_path),
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace")
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg audio extraction failed:\n{proc.stderr[-2000:]}")
     return audio_path
