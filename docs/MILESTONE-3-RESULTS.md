@@ -4,12 +4,15 @@ The numbers behind `docs/SPEC.md` §7's candidacy must-have and §8's candidacy 
 down here for the same reason `MILESTONE-1`/`MILESTONE-2` exist — this is the durable record, not
 console output from a session that's already over.
 
-**Build state: built-partial.** All three §8 metrics are implemented and validated against ground
-truth, all three verdict bands are reachable on real files, the denominator rule fires correctly, and
-the chain into `reel_upscale.py` works. What has *not* happened is a run against real-world camera
-footage — genuine sensor grain, interlacing, film-scan artifacts, letterboxing. Every clip below is
-either synthetic (`ffmpeg lavfi`) or this repo's own milestone-2 output. See
-`docs/SPEC-FEEDBACK.md` finding #14 for why (`samples/` has no video clip) and "Real clip" at the end.
+**Build state: built.** All three §8 metrics are implemented, all three verdict bands are reachable,
+the denominator rule fires correctly, the chain into `reel_upscale.py` works — and the tool has now
+been observed working on **113 real files from three collections with zero failures**, which is what
+`CLAUDE.md`'s "built" requires. See "Real-clip calibration" below; that run also corrected the
+thresholds, which had been set from synthetic material and were materially wrong.
+
+The synthetic ground-truth sections come first because they are what the metrics were *designed*
+against and remain the clearest demonstration that the maths is right. The real-library section is
+what they were *calibrated* against.
 
 ## What the tool is and how it decides
 
@@ -237,12 +240,115 @@ ffmpeg -f lavfi -i color=c=black:size=640x360:rate=24:duration=5 -c:v libx264 bl
 python reel_candidacy.py black.mp4 --frames 8 --no-report   # exit 2
 ```
 
-## Real clip — not yet run
+## Real-clip calibration — 113 files, three collections
 
-The metrics are proven against ground truth with known answers, and against one real Topaz-produced
-file. They have not met real-world footage: sensor grain (which adds genuine broadband energy and may
-push effective-resolution readings up), interlacing, telecine, letterboxing (black bars are flat
-regions that will drag the usable-frame and banding statistics), or film scans. When a real,
-heavily-compressed clip is available: `python reel_candidacy.py <path>` — no `--out` needed, reports
-land beside it. Update this document's build state to **built** once that has happened, and check in
-particular whether the `--blocking-worth 2.0` default holds on grainy content.
+Everything above this section was measured on synthetic material. This section is what happened when
+the tool met a real library: **113 files sampled from `D:\Funscript Videos`, `D:\MultiAxis Videos` and
+`E:\Main Stash`** (12,237 files, ~29 TB total), stratified by collection × resolution tier × bitrate
+tier × whether the filename marks it as a previous upscale.
+
+**113 runs, 113 produced metrics, 0 failures, 0 files with an unusable frame.** The probe fallbacks,
+the frame sampling and the tiered denominator all held on real containers — including `wmv3`/`wmav2`,
+`mpeg2video`/`mp2`, mkv without `nb_frames`, ProRes 10-bit and variable-frame-rate 4K120.
+
+### Finding #16 confirmed with controls, not with one file
+
+The milestone-3 claim above rested on a single synthetic Topaz output reading 96%. It now rests on this:
+
+| Group | n | p25 | median | range |
+|---|---|---|---|---|
+| Filename marks a previous upscale | 31 | 51% | **76%** | 32–96% |
+| No such marking | 82 | 71% | **82%** | 37–99% |
+
+Heavily overlapping. More telling: at n=26 and n=50 the upscaled group read *higher* than the control;
+at n=113 it reads *lower*. **The direction is not stable across subsamples**, which is the cleanest
+demonstration available that there is no signal here — only overlap. The metric cannot identify a
+previous upscale, and this is now evidence rather than inference.
+
+### The detail ratio is dominated by container tier
+
+| Container | n | median detail ratio | median true detail |
+|---|---|---|---|
+| ≤720p | 31 | 91% | 497p |
+| 1080p | 31 | 85% | 894p |
+| 1440p | 7 | — | 1168p |
+| 2160p | 38 | **72%** | **1409p** |
+| >2160p | 6 | — | 3128p |
+
+A typical 4K file in this library holds ~1409p of real detail — 65% of what its container claims.
+Library-wide, 72% of files hold under 90% of container and 44% under 80%. **Of 40 4K-container files,
+15 hold under 60%** — the "served as 4K but containing a lower resolution video" case, at 38% of 4K
+material.
+
+### The thresholds were wrong, and by how much
+
+The original bars came from synthetic sources where clean content reads 100% and damage reads 7–20.
+Real compressed video never reaches either. Measured across the 113:
+
+| Metric | real range | real median | old "worth" bar | times crossed |
+|---|---|---|---|---|
+| detail ratio | 32–99% | 82% | < 0.80 | (fired constantly) |
+| blocking | 0.98–1.72 | 1.13 | > 2.0 | **0 / 113** |
+| banding | **1.00–1.20** | 1.16 | > 3.0 | **0 / 113** |
+
+Recalibrated to the measured distribution — `--min-resolution-ratio` 0.80 → **0.70** (the real p25),
+`--resolution-marginal` 0.95 → **0.90** (the real p75), `--blocking-worth` 2.0 → **1.5** (real p95 is
+1.53), `--blocking-marginal` 1.5 → **1.25**:
+
+| Verdict | before | after |
+|---|---|---|
+| worth | 50 (44%) | 34 (30%) |
+| marginal | 54 (48%) | 54 (48%) |
+| **not worth** | **9 (8%)** | **25 (22%)** |
+
+Before recalibration the tool declined 8% of a library — including, at one point, a 255 Mbps ProRes
+master. It now declines 22%, which is the point of a tool meant to save hours.
+
+### Banding reports but no longer decides
+
+Across all 113 files banding spanned **1.00 to 1.20** and crossed neither its "worth" bar (3.0) nor its
+"marginal" bar (1.5) even once. It measures luma-histogram occupancy — i.e. quantization — and modern
+encodes are dithered enough that the histogram stays full. It has no discriminating power on real
+video.
+
+It is still computed, still printed, and still written per-frame to the `.json` (SPEC.md §8 asks for
+the metric, not for it to gate anything). Its two thresholds now default to `None`, which disables the
+checks; passing `--banding-worth` a number re-enables them with no code change, so a future
+recalibration on different material costs nothing.
+
+### Timing on real footage
+
+| Tier | median | p90 | max |
+|---|---|---|---|
+| SD | 2.2s | 7.2s | 9.5s |
+| HD | 8.2s | 21.5s | 100.7s |
+| UHD | 25.2s | 60.2s | **277.0s** |
+
+At 10 frames. The outliers are seek cost on large files over spinning disk, not analysis cost — the
+FFT work is bounded by resolution, which the synthetic 4K benchmark above already characterised.
+
+### What this did not settle
+
+The metric answers "how much detail is present relative to the container," which is **not** the same
+question as "is this worth upscaling." A 4K file at 72% is not a good upscale candidate (it is already
+4K); an honest 1080p file at 88% is. Deriving a suggested target from the *true detail resolution*
+rather than the container would reconcile the two, and the table above is the evidence for it — but it
+changes what the tool outputs and sits near §13's model-selection exclusion, so it is recorded here as
+an open option rather than built.
+
+## What the real-clip run closed, and what it didn't
+
+**Closed.** This document previously ended by predicting that real footage would test grain,
+interlacing, letterboxing and odd containers, and asking whether `--blocking-worth 2.0` would hold on
+grainy content. It did not hold — blocking never reached even 1.72 across 113 files, and the bar came
+down to 1.5. Container handling was the happier surprise: `wmv3`, `mpeg2video`, ProRes, VFR 4K120 and
+mkv-without-`nb_frames` all ran clean with no code changes.
+
+**Still open, and honestly so:**
+
+- **Interlaced content.** The survey found no interlaced files in any of the three collections, so
+  that path is still untested. It is the one dimension real footage was supposed to cover and didn't.
+- **These thresholds come from one person's library.** 113 files across three collections is a real
+  sample, not a universal one. Everything is a flag, and the per-frame data in each `.json` makes a
+  recalibration cheap — but a different library could well want different bars.
+- **Whether the verdict answers the right question at all.** See "What this did not settle" above.

@@ -23,9 +23,15 @@ note; #11 and #15 → §4; #12 and #13 → §9; #14 → §12's milestone table (
 #20 → §8's corrections subsection; #18 → §6. Nothing from any of the three milestones is still waiting
 on a decision.
 
+**Status: finding #21 (real-library calibration) is resolved and applied.** Running the candidacy
+analyser over 113 files from three real collections showed the §8 thresholds had been set from
+synthetic material and were materially wrong — blocking and banding never crossed a bar in 113 files.
+Thresholds recalibrated, banding demoted to diagnostic-only, §8's table updated.
+
 #16 is the one that mattered most: it does not report a missing detail, it reports that a premise §8
 and `CAPTURE.md` both rest on is only conditionally true, and is *least* true in the case the capture
-says is most common.
+says is most common. It is also the finding the real-library run most strengthened — from one
+synthetic file to a 113-file control comparison.
 
 ---
 
@@ -359,6 +365,13 @@ and in every report, so the tool never makes the claim the spec currently implie
 upscales is research-grade and well outside the "Below Thin" effort class — it should be recorded as
 out of scope, not left as an implied capability.
 
+**Evidence upgraded after real-library testing.** The claim above rested on a single synthetic
+Topaz output. It has since been tested against 113 files from three real collections: 31 whose
+filenames mark a previous upscale read p25=51% / median=76%, against 82 unmarked files at p25=71% /
+median=82% — heavily overlapping. At n=26 and n=50 the upscaled group read *higher* than the control;
+at n=113 it reads *lower*. The direction is not stable across subsamples, which is the cleanest
+available demonstration that there is no signal, only overlap. See `docs/MILESTONE-3-RESULTS.md`.
+
 **Resolved — applied to §8 and §13.** §8's candidacy row now reads "**conventionally (interpolated) upscaled-once**", and a new "Corrections to the candidacy row" subsection carries the ground-truth ladder, the 96%-genuine Topaz result, and the statement that a clean reading is not evidence a source was never upscaled. §13 gains an **AI-upscale detection** out-of-scope entry saying why a detector is not the answer. The tool prints the caveat on every run and in every report, so the claim is never made in the first place.
 
 ### 17. No threshold exists anywhere for any candidacy metric, and the exit-code decision made them mandatory
@@ -438,3 +451,36 @@ two rows are not read as more independent than they are.
 
 **Resolved — applied to §8.** Recorded in the corrections subsection with the crf42 measurement (77% of container on a clip that was never resized), and noted that the verdict is unaffected while the reason would have been wrong. Fixed in the tool's wording, which names both causes.
 
+### 21. Two of §8's three candidacy metrics barely move on real video, and one does not move at all
+
+**Spec says:** §8's candidacy row names three computable metrics — *"an effective-resolution estimate,
+a blocking/banding score, a high-frequency energy ratio"* — and treats them as co-equal inputs to a
+verdict.
+**What actually happened:** Calibrated against synthetic sources, all three looked discriminating: a
+clean gradient banded at 1.00 against 8.14–21.50 for quantized content, and blocking ran 1.00 clean
+against 7.43 at crf40. Measured across 113 files from three real collections:
+
+| Metric | real range | real median | "worth" bar | times crossed |
+|---|---|---|---|---|
+| effective-resolution ratio | 32–99% | 82% | < 0.80 | fired constantly |
+| blocking | 0.98–1.72 | 1.13 | > 2.0 | **0 / 113** |
+| banding | **1.00–1.20** | 1.16 | > 3.0 | **0 / 113** |
+
+Blocking never crossed its bar; banding never crossed even its *marginal* bar, and its entire spread
+across a real library is 0.20 wide. Banding measures luma-histogram occupancy — quantization — and
+modern encodes are dithered enough that the histogram stays full. **On real video it has no
+discriminating power whatever.** In practice the verdict was being decided by the resolution ratio
+alone, while appearing to weigh three signals.
+
+The deeper issue is that the synthetic calibration was not merely imprecise, it was measuring a
+different population: `testsrc2` and quantized gradients exhibit damage that real encodes do not, and
+carry detail to Nyquist that real encodes do not. Every bar derived from them was wrong in the same
+direction.
+**Suggested correction:** §8 should say that the three metrics are not co-equal — the
+effective-resolution estimate carries the verdict, blocking is a weak secondary signal, and banding is
+diagnostic only. **Applied:** thresholds recalibrated to the measured distribution (resolution
+0.80→0.70 and 0.95→0.90; blocking 2.0→1.5 and 1.5→1.25), and banding's thresholds now default to
+`None`, disabling its checks while it continues to be computed, printed and written per-frame to the
+`.json`. Passing `--banding-worth` a number re-enables it with no code change. Recalibration moved
+"not worth upscaling" from 8% of the sampled library to 22% — before it, the tool declined almost
+nothing, including a 255 Mbps ProRes master.

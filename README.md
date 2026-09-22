@@ -61,13 +61,16 @@ clean bill of health.
 
 ## One caveat worth knowing before you trust a result
 
-`reel_candidacy.py` detects **conventionally stretched** upscales — a 480p source sitting in a 1080p
-container — reliably. It **cannot** detect an AI upscale, because tools like Topaz synthesize genuine
-high-frequency detail. Tested against this repo's own Topaz output, a known 2× upscale: it read as 96%
-genuine.
+`reel_candidacy.py` measures **how much real detail a file carries relative to its container**. On
+synthetic ground truth it recovers a known band-limit to within 3%.
 
-So a clean resolution reading is **not** evidence the source was never upscaled. The tool prints this
-on every run. Detail: `docs/SPEC-FEEDBACK.md` finding #16.
+What it **cannot** do is tell you a file was upscaled before. Tested across 113 real files — 31 of
+them marked as prior upscales — the two groups overlap almost entirely, and which reads higher flips
+depending on the subsample. AI upscalers synthesize genuine high-frequency detail, which is exactly
+what the test looks for.
+
+So a clean reading is **not** evidence the source was never upscaled. The tool prints this on every
+run. Detail: `docs/SPEC-FEEDBACK.md` finding #16 and `docs/MILESTONE-3-RESULTS.md`.
 
 ## Where output goes
 
@@ -84,7 +87,9 @@ goes to `out/<clip>/` instead, so dev/test material never gets written into.
 
 ## Tuning without re-running
 
-Every threshold is a flag, and defaults are annotated in `--help` with the measurement behind them.
+Every threshold is a flag, and defaults are annotated in `--help` with the measurement behind them —
+all calibrated against 113 real files, not synthetic sources. Banding reports but does not gate by
+default; pass `--banding-worth` a number to re-enable it.
 The candidacy analyser saves per-frame data, so you can re-verdict a saved report against different
 bars without decoding the video again:
 
@@ -107,5 +112,6 @@ Measured results, with the ground truth behind every default, live in `docs/MILE
 (subtitles), `-2-` (upscale) and `-3-` (candidacy). `docs/CAPTURE.md` is the elicitation record the
 spec was written from — read it when you want to know *why* something is the way it is.
 
-**Build state:** subtitles **built**; upscale and candidacy **built-partial** — both work end to end
-but have only met synthetic clips, not real-world footage. See `docs/SPEC.md` §12.
+**Build state:** subtitles **built**; candidacy **built** (113 real files, three collections, zero
+failures); upscale wrapper **built-partial** — it works end to end but has only met synthetic clips.
+See `docs/SPEC.md` §12.

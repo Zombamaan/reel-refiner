@@ -198,12 +198,27 @@ Nyquist limit. Verified through the shipped tool: 720p→730p, 540p→574p, 360p
 Topaz output, a known 2× upscale of 270p content: reported **96% genuine**. `tvai_up` synthesizes real
 high-frequency detail, filling the exact gap the test looks for.
 
+**Real-library testing made this worse, not better** (113 files, three collections — see
+`docs/MILESTONE-3-RESULTS.md`). The 31 files whose names mark a prior upscale read p25=51% /
+median=76%; the 82 unmarked ones read p25=71% / median=82%. Heavily overlapping — and at n=26 and n=50
+the marked group read *higher* than the control, while at n=113 it reads *lower*. **The direction is
+not stable across subsamples**, which is as clean a demonstration of "no signal, only overlap" as this
+sample can give. The synthetic ladder above is genuine: given content band-limited at a known cutoff,
+the estimate recovers it to within 3%. But real files vary in detail for many reasons other than
+upscaling — compression above all — and those reasons swamp the one being looked for.
+
 The consequence is not a footnote. **Detectability falls as the prior upscaler gets better**, so
 `15_`'s claim that *"the already-upscaled-once case is common, and catching it is pure saved time"*
 holds for the cheap half of that case and fails for the expensive half. **A clean effective-resolution
 reading is not evidence a source was never upscaled**, and the tool prints that caveat on every run
 and in every report rather than letting the number imply more than it supports. Detecting AI upscales
 is research-grade and out of scope — see §13.
+
+**What the metric does reliably measure** is how much detail a file carries relative to its container —
+which is useful, and is not the same question. Library-wide, 72% of files hold under 90% of container
+and 44% under 80%; of 40 4K-container files, 15 hold under 60%. That last group is the "served as 4K
+but containing a lower resolution video" case, and finding it is genuine value the container alone
+cannot give.
 
 **The two damage metrics are not as independent as this table implies** (findings #19, #20). Blocking's
 *baseline* moves with content — a clean natural source measured 1.00, a clean `testsrc2` measured 4.72,
@@ -220,14 +235,29 @@ carry that verdict (0 worth / 3 marginal / 4 not worth, so a run chains into the
 hard boundaries mandatory — report text can hedge, an exit code cannot. Following entry #12's
 precedent, they were put to the owner with their measured basis rather than chosen silently:
 
-| Flag | v1 default | Measured basis |
+| Flag | default | Basis |
 |---|---|---|
-| `--min-resolution-ratio` | 0.80 | clean sources measured 1.00; stretched 0.28–0.68 |
-| `--blocking-worth` | 2.0 | clean natural source 1.00; crf40 7.43; crf51 12.17 |
-| `--banding-worth` | 3.0 | clean 1.00–1.17; quantized 8.14–21.50 |
-| `--resolution-marginal` / `--blocking-marginal` / `--banding-marginal` | 0.95 / 1.5 / 1.5 | mild elevation over the clean baselines above |
+| `--min-resolution-ratio` | **0.70** | 25th percentile across 113 real files |
+| `--resolution-marginal` | **0.90** | 75th percentile across the same |
+| `--blocking-worth` | **1.5** | real range 0.98–1.72, p95 1.53 |
+| `--blocking-marginal` | **1.25** | real median 1.13 |
+| `--banding-worth` / `--banding-marginal` | **off** | see below |
 
-All six are flags, so none is frozen. Measured numbers behind them: `docs/MILESTONE-3-RESULTS.md`.
+**These were recalibrated after real-library testing** (`docs/SPEC-FEEDBACK.md` finding #21). The
+original values — 0.80 / 0.95 / 2.0 / 3.0 / 1.5 / 1.5 — came from synthetic `testsrc2` and gradient
+sources, where clean content reads 100% and damage reads 7–20. Real compressed video reaches neither:
+across 113 files from three collections, blocking never crossed 2.0 and banding never crossed even its
+1.5 marginal bar. The old bars declined only 8% of a real library, including a 255 Mbps ProRes master;
+the new ones decline 22%.
+
+**Banding no longer gates**, because across those 113 files it spanned 1.00–1.20 and crossed nothing.
+It measures quantization, which dithered modern encodes do not exhibit. It is still computed, printed
+and written per-frame to the `.json` — §8 asks for the metric, not for it to decide — and passing
+`--banding-worth` a number re-enables it with no code change.
+
+**The three metrics are not co-equal.** The effective-resolution estimate carries the verdict in
+practice; blocking is a weak secondary signal; banding is diagnostic only. All bars remain flags.
+Measured distributions: `docs/MILESTONE-3-RESULTS.md`.
 
 **On the upscale-encode-size row**, one framing correction from `docs/MILESTONE-2-RESULTS.md`: §3's
 metric (b) says output should stay *"close to source size,"* but an upscale has 4× the pixels at 2×
@@ -345,10 +375,11 @@ they are:
 |---|---|---|---|---|
 | 1 | Subtitles (`reel_subtitles.py`, `srt_verify.py`) | **built** | `docs/MILESTONE-1-RESULTS.md` | #1–#9 |
 | 2 | Upscale wrapper (`reel_upscale.py`, `upscale_verify.py`) | **built-partial** | `docs/MILESTONE-2-RESULTS.md` | #10–#15 |
-| 3 | Candidacy analyser (`reel_candidacy.py`, `candidacy_verify.py`) | **built-partial** | `docs/MILESTONE-3-RESULTS.md` | #16–#20 |
+| 3 | Candidacy analyser (`reel_candidacy.py`, `candidacy_verify.py`) | **built** | `docs/MILESTONE-3-RESULTS.md` | #16–#21 |
 
-Both **built-partial** states have the same single cause and the same remedy: no real-world clip has
-been through either tool. This repo's `samples/` holds no video (finding #14), so milestones 2 and 3
+**Milestone 3 reached `built` by real-library testing**: 113 files across three collections, zero
+failures, which also recalibrated §8's thresholds (finding #21). Milestone 2 remains **built-partial**
+for the original reason: no real clip has been through the upscale wrapper. This repo's `samples/` holds no video (finding #14), so milestones 2 and 3
 were verified against synthetically generated clips and against milestone 2's own output. The untested
 dimension is real footage — genuine codecs, sensor grain, interlacing, telecine, letterboxing. For the
 candidacy analyser specifically, **grain is the thing most likely to move a number**: it adds real

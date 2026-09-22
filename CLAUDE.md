@@ -51,22 +51,28 @@ clip has gone through yet: no video clip exists in this repo's `samples/`, so ve
 synthetically generated degraded clip instead. Findings #10–#15 in `docs/SPEC-FEEDBACK.md` are what
 building it found wrong with or missing from the spec.
 
-**Status, candidacy analyser: built-partial.** `reel_candidacy.py` samples frames across a source and
+**Status, candidacy analyser: built.** `reel_candidacy.py` samples frames across a source and
 computes §8's three metrics (`candidacy_verify.py`) — an effective-resolution estimate, blocking and
 banding scores, and a high-frequency energy ratio — then maps them to a verdict carried in the exit
 code (0 worth / 3 marginal / 4 not worth), so a run chains into `reel_upscale.py`. The denominator rule
 is tiered `requested → decoded → usable` and gates on *usable*, so an all-black source reads "broken"
 rather than clean. Reports are written as `.txt` and `.json` beside the input (or `out/<clip>/` for a
-`samples/` clip). See `docs/MILESTONE-3-RESULTS.md`. Partial for the same reason as the upscale
-wrapper: no real-world footage has gone through, only synthetic clips and milestone 2's own output.
+`samples/` clip). See `docs/MILESTONE-3-RESULTS.md`.
+
+**It reached `built` by real-library testing**: 113 files across three collections, zero failures.
+That run also found the §8 thresholds had been calibrated on synthetic material and were materially
+wrong — blocking and banding crossed no bar in 113 files — so they were recalibrated and banding was
+demoted to diagnostic-only (`docs/SPEC-FEEDBACK.md` finding #21). **Do not re-tune these from
+synthetic sources.** `testsrc2` and quantized gradients exhibit damage real encodes don't, and carry
+detail to Nyquist real encodes don't; every bar derived from them was wrong in the same direction.
 
 **Its most important result is a limit, not a feature** (`docs/SPEC-FEEDBACK.md` finding #16): the
-effective-resolution metric catches *stretched* upscales but not AI ones — verified against this repo's
-own Topaz output, which read as 96% genuine. Detectability falls as the prior upscaler gets better, so
-the expensive half of the "already upscaled once" case escapes. Every run prints that caveat; don't let
-a clean reading be reported as evidence a source was never upscaled.
+effective-resolution metric recovers a band-limit accurately on synthetic ground truth (±3%), but it
+**cannot identify a previously-upscaled real file**. Tested across 113 real files, 31 of them marked as
+prior upscales: the two groups overlap heavily, and which one reads higher flips between subsamples.
+Every run prints that caveat; never report a clean reading as evidence a source was not upscaled.
 
-**All three §7 tools now exist.** Findings #16–#20 in `docs/SPEC-FEEDBACK.md` are what building the
+**All three §7 tools now exist.** Findings #16–#21 in `docs/SPEC-FEEDBACK.md` are what building the
 candidacy analyser found wrong with or missing from the spec.
 
 Dev/test clips live in `samples/<clip>/`, never committed — `source.<ext>` is what gets fed to the

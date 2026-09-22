@@ -59,12 +59,27 @@ DEFAULT_FRAMES = 20  # 20 fast-seek extractions measured at 1.1s on a 20s clip
 
 # Thresholds. Each is a keyword arg and a CLI flag; the defaults below are the
 # values measured during the build (docs/MILESTONE-3-RESULTS.md), not guesses.
-DEFAULT_MIN_RESOLUTION_RATIO = 0.80   # clean sources measured 1.00; stretched ones 0.28-0.68
-DEFAULT_BLOCKING_WORTH = 2.0          # clean natural source measured 1.00; crf40 measured 7.43
-DEFAULT_BANDING_WORTH = 3.0           # clean measured 1.00-1.17; quantized measured 8.14-21.50
-DEFAULT_RESOLUTION_MARGINAL = 0.95
-DEFAULT_BLOCKING_MARGINAL = 1.5
-DEFAULT_BANDING_MARGINAL = 1.5
+# Recalibrated against 113 files from three real collections (n=113, zero
+# failures) — docs/MILESTONE-3-RESULTS.md. The original values came from
+# synthetic testsrc2/gradient sources, where clean content reads 100% and
+# damage reads 7-20. Real compressed video never reaches those figures: the
+# measured detail ratio runs p25=70% med=82% p75=91%, and blocking spans
+# 0.98-1.72 against an original 2.0 bar it never once crossed.
+DEFAULT_MIN_RESOLUTION_RATIO = 0.70   # real: p25=0.70; synthetic-era value was 0.80
+DEFAULT_RESOLUTION_MARGINAL = 0.90    # real: p75=0.91; synthetic-era value was 0.95
+DEFAULT_BLOCKING_WORTH = 1.5          # real: p95=1.53, max=1.72; synthetic-era value was 2.0
+DEFAULT_BLOCKING_MARGINAL = 1.25      # real: median=1.13
+
+# Banding does not gate by default — None disables its checks entirely.
+# Across those same 113 real files it spanned 1.00-1.20 and crossed neither
+# its old 3.0 "worth" bar nor its 1.5 "marginal" bar even once. It measures
+# luma-histogram occupancy, i.e. quantization, and modern encodes are dithered
+# enough that the histogram stays full. It is still computed and reported on
+# every run (SPEC.md §8 asks for the metric, not for it to decide anything),
+# and per-frame values still reach the .json, so passing --banding-worth a
+# number re-enables it without any code change.
+DEFAULT_BANDING_WORTH = None
+DEFAULT_BANDING_MARGINAL = None
 
 _RESIDUAL_FLOOR = 1e-4  # spectral energy above the cutoff, as a fraction of AC energy
 _RADIAL_BINS = 256      # ~0.4% of frame height per bin
@@ -253,11 +268,13 @@ def _evaluate(source_path, container_width, container_height,
                        f"({ratio * 100:.0f}%) — a stretched source, or high frequencies stripped "
                        f"by heavy compression")
     if blocking > thresholds["blocking_worth"]:
-        reasons.append(f"blocking {blocking:.2f} against ~1.0 for clean content — visible "
+        reasons.append(f"blocking {blocking:.2f} against ~1.1 median for real content — visible "
                        f"compression damage an upscale can clean up")
-    if banding > thresholds["banding_worth"]:
-        reasons.append(f"banding {banding:.2f} against ~1.0 for clean content — quantization "
-                       f"contouring in smooth areas")
+    # Banding gates only when given a bar; it is None by default because it
+    # never once crossed a threshold across 113 real files. Still reported.
+    if thresholds["banding_worth"] is not None and banding > thresholds["banding_worth"]:
+        reasons.append(f"banding {banding:.2f} against ~1.16 median for real content — "
+                       f"quantization contouring in smooth areas")
     if reasons:
         return _result(source_path, container_width, container_height, thresholds, 0, "worth",
                        f"worth upscaling ({denom}): " + "; ".join(reasons),
@@ -268,7 +285,7 @@ def _evaluate(source_path, container_width, container_height,
                        f"{ratio * 100:.0f}%)")
     if blocking > thresholds["blocking_marginal"]:
         reasons.append(f"mild blocking {blocking:.2f}")
-    if banding > thresholds["banding_marginal"]:
+    if thresholds["banding_marginal"] is not None and banding > thresholds["banding_marginal"]:
         reasons.append(f"mild banding {banding:.2f}")
     if reasons:
         return _result(source_path, container_width, container_height, thresholds, 3, "marginal",
@@ -326,22 +343,24 @@ def add_threshold_args(parser: argparse.ArgumentParser) -> None:
     """Shared by this module's CLI and reel_candidacy.py's, so the two can
     never drift apart on defaults or help text."""
     parser.add_argument("--min-resolution-ratio", type=float, default=None,
-                         help=f"below this fraction of the container height, the source reads as "
-                              f"stretched (default: {DEFAULT_MIN_RESOLUTION_RATIO}; clean sources "
-                              f"measured 1.00, stretched ones 0.28-0.68)")
+                         help=f"below this fraction of the container height, the source carries "
+                              f"materially less detail than it claims (default: "
+                              f"{DEFAULT_MIN_RESOLUTION_RATIO}, the 25th percentile across 113 real "
+                              f"files; synthetic sources read 1.00 and misled the original 0.80)")
+    parser.add_argument("--resolution-marginal", type=float, default=None,
+                         help=f"below this, detail is mildly short (default: "
+                              f"{DEFAULT_RESOLUTION_MARGINAL}, the real-file 75th percentile)")
     parser.add_argument("--blocking-worth", type=float, default=None,
                          help=f"blocking above this counts as real damage (default: "
-                              f"{DEFAULT_BLOCKING_WORTH}; clean ~1.0, crf40 measured 7.43)")
-    parser.add_argument("--banding-worth", type=float, default=None,
-                         help=f"banding above this counts as real damage (default: "
-                              f"{DEFAULT_BANDING_WORTH}; clean 1.00-1.17, quantized 8.14-21.50)")
-    parser.add_argument("--resolution-marginal", type=float, default=None,
-                         help=f"below this, resolution is mildly short (default: "
-                              f"{DEFAULT_RESOLUTION_MARGINAL})")
+                              f"{DEFAULT_BLOCKING_WORTH}; real files span 0.98-1.72, median 1.13)")
     parser.add_argument("--blocking-marginal", type=float, default=None,
                          help=f"mild blocking bar (default: {DEFAULT_BLOCKING_MARGINAL})")
+    parser.add_argument("--banding-worth", type=float, default=None,
+                         help="banding above this counts as real damage (default: OFF — banding "
+                              "spanned only 1.00-1.20 across 113 real files and never crossed any "
+                              "bar, so it reports but does not gate; pass a number to re-enable)")
     parser.add_argument("--banding-marginal", type=float, default=None,
-                         help=f"mild banding bar (default: {DEFAULT_BANDING_MARGINAL})")
+                         help="mild banding bar (default: OFF, as above)")
 
 
 def threshold_kwargs(args) -> dict:

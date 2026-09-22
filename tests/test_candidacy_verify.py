@@ -172,9 +172,21 @@ def test_heavy_blocking_alone_is_worth_upscaling():
     assert r.verdict == "worth"
 
 
-def test_heavy_banding_alone_is_worth_upscaling():
-    r = evaluate([frame(banding=8.1)] * 5)
-    assert r.exit_code == 0
+def test_banding_does_not_gate_by_default_but_can_be_re_enabled():
+    """Across 113 real files banding spanned only 1.00-1.20 and never crossed
+    any bar — it measures quantization, which dithered modern encodes don't
+    exhibit. So it reports but does not decide (docs/MILESTONE-3-RESULTS.md).
+    Passing a bar must bring it back without a code change."""
+    assert evaluate([frame(banding=8.1)] * 5).exit_code == 4      # off: ignored entirely
+    assert evaluate([frame(banding=8.1)] * 5, banding_worth=3.0).exit_code == 0
+    assert evaluate([frame(banding=2.0)] * 5, banding_marginal=1.5).exit_code == 3
+
+
+def test_banding_is_still_reported_even_though_it_does_not_gate():
+    """SPEC.md §8 asks for the metric; dropping it from the verdict must not
+    drop it from the report."""
+    r = evaluate([frame(banding=1.18)] * 5)
+    assert r.banding == 1.18
 
 
 def test_clean_honest_source_is_not_worth_upscaling():
@@ -185,22 +197,23 @@ def test_clean_honest_source_is_not_worth_upscaling():
 
 def test_mild_damage_is_marginal_and_reachable():
     """The ladder is ordered, so marginal only fires when no severe bar is
-    tripped — this is the check that catches an unordered implementation."""
-    r = evaluate([frame(blocking=1.7)] * 5)
+    tripped — this is the check that catches an unordered implementation.
+    1.35 sits between the recalibrated marginal (1.25) and worth (1.5) bars."""
+    r = evaluate([frame(blocking=1.35)] * 5)
     assert r.exit_code == 3
     assert r.verdict == "marginal"
 
 
 def test_severe_bar_wins_over_mild_bar():
     """A file tripping both must read worth (0), never marginal (3)."""
-    r = evaluate([frame(ratio=0.30, blocking=1.7)] * 5)
+    r = evaluate([frame(ratio=0.30, blocking=1.35)] * 5)
     assert r.exit_code == 0
 
 
 def test_all_three_exit_codes_are_reachable():
     codes = {
         evaluate([frame(ratio=0.30)] * 3).exit_code,
-        evaluate([frame(blocking=1.7)] * 3).exit_code,
+        evaluate([frame(blocking=1.35)] * 3).exit_code,
         evaluate([frame()] * 3).exit_code,
     }
     assert codes == {0, 3, 4}
@@ -240,16 +253,16 @@ def test_median_not_mean_so_one_outlier_frame_cannot_flip_the_verdict():
 
 
 def test_thresholds_are_adjustable_not_hardcoded():
-    per_frame = [frame(blocking=1.7)] * 5
+    per_frame = [frame(blocking=1.35)] * 5
     assert evaluate(per_frame).exit_code == 3
-    assert evaluate(per_frame, blocking_worth=1.6).exit_code == 0
-    assert evaluate(per_frame, blocking_marginal=1.8).exit_code == 4
+    assert evaluate(per_frame, blocking_worth=1.3).exit_code == 0
+    assert evaluate(per_frame, blocking_marginal=1.4).exit_code == 4
 
 
 def test_denominators_and_caveat_reported_on_every_code_path():
     cases = [
         [frame(ratio=0.30)] * 3,       # worth
-        [frame(blocking=1.7)] * 3,     # marginal
+        [frame(blocking=1.35)] * 3,    # marginal
         [frame()] * 3,                 # not worth
         [frame(usable=False)] * 3,     # broken
     ]
