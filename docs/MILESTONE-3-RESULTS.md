@@ -115,8 +115,10 @@ substitution before it was made. Occupancy measures the quantization that *cause
 | Quantized to 16 levels | 10.00 |
 | Quantized to 5 levels | 21.50 |
 
-Clean content sits at 1.00–1.17, quantized content at 8+. The `--banding-worth 3.0` default sits in a
-wide empty gap rather than on a contested boundary.
+Clean content sits at 1.00–1.17, quantized content at 8+, and on synthetic material a 3.0 bar sat in a
+wide empty gap. **That gap does not exist in real video** — see the real-library section below, where
+banding spanned 1.00–1.20 across 113 files and never crossed any bar. Its thresholds now default to
+off; it reports but does not gate.
 
 ## All three verdict bands, reachable on real files
 

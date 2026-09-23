@@ -378,13 +378,18 @@ they are:
 | 3 | Candidacy analyser (`reel_candidacy.py`, `candidacy_verify.py`) | **built** | `docs/MILESTONE-3-RESULTS.md` | #16–#21 |
 
 **Milestone 3 reached `built` by real-library testing**: 113 files across three collections, zero
-failures, which also recalibrated §8's thresholds (finding #21). Milestone 2 remains **built-partial**
-for the original reason: no real clip has been through the upscale wrapper. This repo's `samples/` holds no video (finding #14), so milestones 2 and 3
-were verified against synthetically generated clips and against milestone 2's own output. The untested
-dimension is real footage — genuine codecs, sensor grain, interlacing, telecine, letterboxing. For the
-candidacy analyser specifically, **grain is the thing most likely to move a number**: it adds real
-broadband energy and may push effective-resolution readings up, so `--blocking-worth 2.0` is the
-default to re-check first on grainy content.
+failures and zero unusable frames, which also recalibrated §8's thresholds (finding #21). The
+prediction this section previously carried — that grain would be the thing most likely to move a
+number, and that `--blocking-worth 2.0` was the default to re-check — was half right. Blocking was
+indeed the default that needed re-checking, and it did not hold: across 113 real files it never
+reached even 1.72, and the bar came down to 1.5. Container handling was the happier surprise, with
+`wmv3`, `mpeg2video`, ProRes 10-bit, VFR 4K120 and mkv-without-`nb_frames` all running unchanged.
+**Interlaced content remains untested** — the survey found none across 12,237 files, so the one
+dimension real footage was meant to cover, it didn't.
+
+Milestone 2 remains **built-partial** for the original reason: no real clip has been through the
+upscale wrapper. This repo's `samples/` holds no video (finding #14), so it was verified against
+synthetically generated clips.
 
 ## 13. Out of scope for v1
 
