@@ -36,6 +36,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Real library paths carry characters outside the Windows console's cp1252
+# codepage (emoji, curly quotes, non-Latin scripts). Redirected output
+# defaults to strict cp1252 and crashes mid-scan on the first one; utf-8
+# with errors="replace" prints something legible instead. Same class of
+# fix as reel_upscale.py/reel_candidacy.py's ffprobe/ffmpeg decoding.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except AttributeError:
+        pass
+
 FFPROBE = os.environ.get("REEL_FFPROBE", "ffprobe")
 
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".ts", ".m2ts", ".webm", ".wmv",
