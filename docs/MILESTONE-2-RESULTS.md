@@ -282,3 +282,54 @@ multi-language audio, non-AAC audio codecs, odd containers (`.wmv`/`.mpeg`/`.ts`
 remain unexercised for the upscale wrapper specifically, same as milestone 3's candidacy analyser
 remaining built on 113-of-12,237 files rather than every one. `out/candidate_survey.txt` has real
 examples of each dimension if a targeted follow-up spot-check is ever wanted.
+
+## Second real clip — live-action, full length
+
+The owner reported the first real-clip run (a 3D-animated short) produced only a "moderate,
+not-noticeable" visible improvement despite reading "worth upscaling." Discussed why: candidacy's
+verdict measures detail lost to compression relative to the container, not whether a human will see a
+difference — CG-rendered content carries little fine natural texture for the model to reconstruct even
+when heavily compressed. The owner asked for a live-action clip next to see a more visible result, and
+authorized running the *full* file (not a trimmed excerpt) overnight, accepting the multi-hour cost.
+
+Genuinely heavily-compressed (bpp < 0.04) high-resolution live-action material turned out to be rare in
+this library — a deeper `scripts/survey_candidates.py` pass (400 examples per dimension instead of 25)
+found the low-bpp-highres bucket still dominated almost entirely by 3D-animated shorts; that same deeper
+run also surfaced and fixed a real bug in the survey script itself (see below). The pick, found by
+relaxing the search to the broader survey output rather than the top-N slice:
+
+`D:\Funscript Videos\2D\Sex\GirlsDoPorn\GirlsDoPorn E409 - Charisma - 18 Years Old.mkv` — 3840x2160,
+HEVC (8-bit), 29.97fps, 42.4 minutes (76,310 frames), 1,676,569,875 bytes (1.56 GiB). `reel_candidacy.py`
+confirmed **worth upscaling**: ~1084p detail in a 2160p container (50%).
+
+```
+python reel_upscale.py "D:\Funscript Videos\2D\Sex\GirlsDoPorn\GirlsDoPorn E409 - Charisma - 18 Years Old.mkv" --model ahq-12 --scale 2 --crf 20
+```
+
+| | Result |
+|---|---|
+| Device | auto (GPU) |
+| Wall time | 35,019.5s (**~9.73 hours**) |
+| Verify exit | 0 (pass) |
+| Output size | 6,803,407,673 B (6.34 GiB) — **4.06x** source (still under the 5.0x default gate, but close) |
+| Duration | 2546.21s output vs 2546.21s source (exact) |
+| Frames | 76,310 vs 76,310 (exact match) |
+| Output resolution | 7680x4320 (scale=2 of 3840x2160) |
+
+Confirms the earlier synthetic-clip prediction: **live-action content compresses far less efficiently
+at a given CRF than smooth 3D-rendered content.** The two prior real-clip runs (CG-animated, short) read
+2.12x and 2.27x; this one, 76x more frames of live-action footage at the same model/scale/CRF, read
+**4.06x** — closer to the 5.0x gate than either CG clip got, though still passing. Grain, skin texture,
+and background detail all cost real bits to encode at CRF 20 that smooth CG shading doesn't. A future
+run at a higher CRF (lower quality target) or a higher `--max-ratio` may be warranted for live-action
+material specifically if this pattern holds — not changed here since this run's purpose was to observe
+the real number, not tune around it.
+
+Source file confirmed unmodified by checksum before and after. Output landed next to the source with
+the expected `<stem>.upscaled.<model>.crf<N>.<ext>` naming; sidecar files next to the source
+(`.funscript`, `.gif`, `.png`, `.thumbs`) were untouched, as expected — the wrapper only ever touches
+the one file named on the command line.
+
+This run also exercises real duration at scale for the first time: prior real-clip runs were 9–14
+seconds; this one ran continuously for nearly 10 hours without failing partway, which is itself evidence
+for the pipe/encode holding up over a much longer, unattended run than anything tested before.
