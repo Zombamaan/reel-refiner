@@ -327,14 +327,36 @@ recalibration on different material costs nothing.
 At 10 frames. The outliers are seek cost on large files over spinning disk, not analysis cost — the
 FFT work is bounded by resolution, which the synthetic 4K benchmark above already characterised.
 
-### What this did not settle
+### Suggested target resolution — built on this evidence
 
 The metric answers "how much detail is present relative to the container," which is **not** the same
-question as "is this worth upscaling." A 4K file at 72% is not a good upscale candidate (it is already
-4K); an honest 1080p file at 88% is. Deriving a suggested target from the *true detail resolution*
-rather than the container would reconcile the two, and the table above is the evidence for it — but it
-changes what the tool outputs and sits near §13's model-selection exclusion, so it is recorded here as
-an open option rather than built.
+question as "is this worth upscaling." The tool now reports both: the verdict, and separately a
+suggested target derived from **measured detail, never the container**.
+
+Deriving from the container fails in both directions, which is exactly what the owner flagged: a flat
+4K target over-applies on a low-resolution original, and a flat 2× explodes a low-quality 8K input to
+16K. Measured detail is immune to both, because it is what the file contains rather than what its
+header claims. The target is the largest standard tier at or below 2× measured detail — snapped
+**down**, because past that an upscaler invents rather than resolves. The raw figure prints alongside,
+so an override upward is an informed one (`--detail-multiplier`).
+
+Verified on real library files:
+
+| Case | Container | Measured detail | Suggested target | Reads as |
+|---|---|---|---|---|
+| honest 1080p | 1920×1080 | 892p (83%) | **1440p** | headroom, ×1.3 on the container |
+| 720p odd container | 1280×720 | 574p (80%) | **1080p** | headroom, ×1.5 |
+| ProRes master | 1920×1080 | 991p (92%) | **1440p** | headroom, but verdict says *not worth* |
+| fake-4K web rip | 3840×2160 | 962p (45%) | **1440p** | already 2160p — cleanup, not resolution |
+| known upscaled 4K | 4096×2160 | 1080p (50%) | **2160p** | already there — cleanup, not resolution |
+
+The last two are the owner's "served as 4K but containing a lower resolution video" case, correctly
+identified and correctly described: processing may still be worthwhile, but it will not add resolution.
+
+**The target prints after the verdict, deliberately.** It qualifies the verdict rather than competing
+with it, and the two genuinely can point different ways — a 4K container holding 1055p is *worth*
+processing for cleanup while gaining no resolution at all. Printed before the verdict, that read as a
+contradiction.
 
 ## What the real-clip run closed, and what it didn't
 

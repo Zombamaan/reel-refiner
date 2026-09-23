@@ -25,6 +25,7 @@ from candidacy_verify import (  # noqa: E402
     _evaluate,
     default_thresholds,
     frame_metrics,
+    suggest_target,
 )
 
 # ---------------------------------------------------------------- layer 1: the maths
@@ -259,6 +260,68 @@ def test_thresholds_are_adjustable_not_hardcoded():
     assert evaluate(per_frame, blocking_marginal=1.4).exit_code == 4
 
 
+def test_target_does_not_over_apply_on_a_low_resolution_original():
+    """The first risk the owner named: a flat target sends a 480p original to
+    4K. Deriving from measured detail must not."""
+    target, raw, _ = suggest_target(detail_px=430, container_height=480)
+    assert target == 720
+    assert raw == 860
+    assert target < 2160
+
+
+def test_target_does_not_explode_a_low_quality_high_resolution_source():
+    """The second risk: a flat 2x sends a poor 8K file to 16K. Measured
+    detail caps it, because the detail isn't there to justify more."""
+    target, _, note = suggest_target(detail_px=2000, container_height=4320)
+    assert target == 2160
+    assert target < 4320
+    assert "cleanup, not added resolution" in note
+
+
+def test_target_says_so_when_the_container_already_exceeds_its_detail():
+    """A 4K container holding ~1100p — the 'served as 4K' case. The honest
+    answer is that upscaling adds no resolution here."""
+    target, _, note = suggest_target(detail_px=1100, container_height=2160)
+    assert target <= 2160
+    assert "cleanup, not added resolution" in note
+
+
+def test_target_offers_real_headroom_on_an_honest_source():
+    target, raw, note = suggest_target(detail_px=950, container_height=1080)
+    assert target == 1440
+    assert raw == 1900
+    assert "supportable" in note
+
+
+def test_target_snaps_down_never_up():
+    """Snapping down is what keeps the suggestion inside what the upscaler
+    can resolve rather than invent."""
+    for detail, expected in [(300, 480), (400, 720), (600, 1080), (800, 1440), (1200, 2160)]:
+        target, raw, _ = suggest_target(detail_px=detail, container_height=1080)
+        assert target <= raw, f"detail={detail}: target {target} exceeded raw {raw}"
+        assert target == expected
+
+
+def test_target_multiplier_is_adjustable():
+    assert suggest_target(950, 1080, multiplier=2.0)[0] == 1440
+    assert suggest_target(950, 1080, multiplier=4.0)[0] == 2160
+    assert suggest_target(950, 1080, multiplier=1.0)[0] == 720
+
+
+def test_target_absent_when_nothing_was_measured():
+    assert suggest_target(None, 1080) == (None, None, None)
+    assert suggest_target(0, 1080) == (None, None, None)
+    assert suggest_target(900, 0) == (None, None, None)
+
+
+def test_target_reaches_the_result_and_survives_a_broken_run():
+    good = evaluate([frame(ratio=0.88)] * 5)
+    assert good.suggested_target_px is not None
+    assert good.raw_target_px is not None
+    broken = evaluate([frame(usable=False)] * 5)
+    assert broken.suggested_target_px is None  # nothing measured, nothing suggested
+
+
 def test_denominators_and_caveat_reported_on_every_code_path():
     cases = [
         [frame(ratio=0.30)] * 3,       # worth
@@ -271,7 +334,9 @@ def test_denominators_and_caveat_reported_on_every_code_path():
         assert r.frames_requested is not None
         assert r.frames_decoded is not None
         assert r.frames_usable is not None
-        assert r.caveat and "AI upscale" in r.caveat
+        # The caveat's essential claim, not its exact phrasing: a clean
+        # reading must never be presented as proof the source was untouched.
+        assert r.caveat and "not evidence a source was never upscaled" in r.caveat
 
 
 # ------------------------------------------------------------- sampling + file safety

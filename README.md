@@ -85,6 +85,32 @@ clip.mp4  ->  clip.en.srt
 `--out <dir>` overrides. Clips under this repo's own `samples/` are the one exception: their output
 goes to `out/<clip>/` instead, so dev/test material never gets written into.
 
+## What the candidacy report tells you
+
+Two separate things, and they can point different ways:
+
+- **The verdict** — is there headroom worth spending hours on?
+- **The suggested target** — how far could the measured detail actually be taken?
+
+The target is derived from *measured detail*, never from the container, which is what stops it
+over-applying on a low-resolution original or exploding a low-quality 8K input. It snaps down to the
+largest standard tier at or below 2× measured detail; past that an upscaler invents rather than
+resolves. `--detail-multiplier` overrides.
+
+```
+  effective_resolution   ~1055p of 2160p  (49% of container)
+
+VERDICT: WORTH
+  because:
+    - detail consistent with ~1055p inside a 2160p container (49%)
+
+SUGGESTED TARGET: 1440p
+  already 2160p, and its measured detail only supports ~1440p —
+  an upscale would be cleanup, not added resolution
+```
+
+That file is worth processing *and* will gain no resolution from it. Both are true.
+
 ## Tuning without re-running
 
 Every threshold is a flag, and defaults are annotated in `--help` with the measurement behind them —

@@ -226,6 +226,26 @@ def render_report(result, info: dict, elapsed: float) -> str:
         ] + [f"    - {r}" for r in result.reasons] + [""]
     else:
         lines += [f"VERDICT: {result.verdict.upper()}", f"  {result.message}", ""]
+
+    # Deliberately *after* the verdict, because it qualifies it rather than
+    # competing with it. The verdict answers "is there headroom worth hours?";
+    # this answers "how far could the measured detail actually be taken?".
+    # Those come apart — a 4K container holding 1055p can be worth processing
+    # for cleanup while gaining no resolution at all — and printing the target
+    # first made that read as a contradiction.
+    if result.suggested_target_px:
+        lines += [
+            f"SUGGESTED TARGET: {result.suggested_target_px}p"
+            f"  — how far the measured detail could be taken, which is a",
+            "                        different question from the verdict above",
+            f"  {result.target_note}",
+            f"  (derived from measured detail, never the container: "
+            f"{result.thresholds.get('detail_multiplier')}x {result.effective_resolution_px}p "
+            f"= {result.raw_target_px}p, snapped down to a standard",
+            "   tier — past that an upscaler invents rather than resolves. "
+            "Override with --detail-multiplier.)",
+            "",
+        ]
     lines += [f"CAVEAT: {result.caveat}", "",
               f"thresholds: {json.dumps(result.thresholds, sort_keys=True)}",
               f"exit_code:  {result.exit_code}"]
@@ -249,6 +269,9 @@ def report_json(result, info: dict, elapsed: float) -> str:
         blocking=result.blocking,
         banding=result.banding,
         hf_energy_ratio=result.hf_energy_ratio,
+        suggested_target_px=result.suggested_target_px,
+        raw_target_px=result.raw_target_px,
+        target_note=result.target_note,
         thresholds=result.thresholds,
         verdict=result.verdict,
         reasons=result.reasons,
@@ -310,6 +333,8 @@ def run(
     print(f"  {result.frames_usable} usable of {result.frames_decoded} decoded "
           f"({frames} requested), {elapsed:.1f}s wall time")
     print(result.message)
+    if result.suggested_target_px:
+        print(f"suggested target: {result.suggested_target_px}p — {result.target_note}")
     print(summary_line(result))
     print(f"CAVEAT: {CAVEAT}")
 

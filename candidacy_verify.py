@@ -6,17 +6,22 @@ estimate, a blocking/banding score, and a high-frequency energy ratio. This
 module computes all of them over one luma plane (frame_metrics), aggregates
 across sampled frames, and maps the result to a verdict (_evaluate).
 
-**The effective-resolution metric detects stretched upscales only.** A file
-that was scaled up with an ordinary resampler has nothing above the original
-Nyquist limit — interpolation invents no detail — so its spectrum falls off a
-cliff exactly where the true resolution ran out, and that cliff is findable.
-An *AI* upscale does not behave that way: it synthesizes plausible new
-high-frequency detail, filling the very gap this test looks for. Verified,
-not assumed: run against this repo's own Topaz output (a known 2x upscale of
-270p content) it reported 529p of a 540p container — 98% "genuine". Every
-report this module produces carries that caveat, because the case the spec
-most wants caught is the one most likely to escape. See
-docs/SPEC-FEEDBACK.md finding #16.
+**What the effective-resolution metric can and cannot do.** Given content
+band-limited at a known cutoff it recovers that cutoff to within 3% — the
+maths is sound, and tests/test_candidacy_verify.py proves it against
+synthetic planes. What it *cannot* do is tell you a real file was upscaled
+before. Measured across 113 files from three real collections, the 31 whose
+names mark a prior upscale read median 76% and the 82 unmarked ones 82% —
+heavily overlapping, and which group reads higher flips between subsamples.
+AI upscalers synthesize genuine high-frequency detail, which is exactly what
+this test looks for, and real files vary in detail for many reasons other
+than upscaling — compression above all — which swamp the one being sought.
+Every report carries that caveat. See docs/SPEC-FEEDBACK.md finding #16 and
+docs/MILESTONE-3-RESULTS.md.
+
+What it *does* measure reliably is how much detail a file carries relative to
+its container, which is a different and still-useful question — and it is
+what suggest_target() reasons from.
 
 Banding is measured as luma-histogram occupancy (span / distinct levels
 present) rather than per-block level counting. The block approach was tried
@@ -81,6 +86,15 @@ DEFAULT_BLOCKING_MARGINAL = 1.25      # real: median=1.13
 DEFAULT_BANDING_WORTH = None
 DEFAULT_BANDING_MARGINAL = None
 
+# Target suggestion. Derived from *measured detail*, never from the container
+# — which is the whole point. Deriving from the container fails in both
+# directions: a flat 4K target over-applies on a low-resolution original, and
+# a flat 2x explodes a low-quality 8K input to 16K. Measured detail is immune
+# to both, because it is what the file actually contains rather than what its
+# header claims.
+STANDARD_HEIGHTS = (480, 720, 1080, 1440, 2160, 4320)
+DEFAULT_DETAIL_MULTIPLIER = 2.0  # an upscaler resolves ~2x real detail; beyond that it invents
+
 _RESIDUAL_FLOOR = 1e-4  # spectral energy above the cutoff, as a fraction of AC energy
 _RADIAL_BINS = 256      # ~0.4% of frame height per bin
 _MIN_SWEEP_BIN = int(0.06 * _RADIAL_BINS)  # never claim an effective resolution below 6%
@@ -88,11 +102,11 @@ _FLAT_FRAME_STD = 1.0   # below this a frame carries no measurable detail at all
 _BLOCK = 8              # the DCT block grid every mainstream codec works in
 
 CAVEAT = (
-    "the effective-resolution estimate detects conventional (stretched) upscales only. "
-    "An AI upscale (Topaz tvai_up and similar) synthesizes real high-frequency detail and "
-    "reads as genuine — verified against this repo's own Topaz output at 98% of container. "
-    "A clean bill of health here is not evidence the source was never upscaled. "
-    "See docs/SPEC-FEEDBACK.md finding #16."
+    "this measures how much detail a file carries relative to its container — it does NOT "
+    "detect whether a file was upscaled before. Across 113 real files, 31 marked as prior "
+    "upscales read median 76% against 82% for 82 unmarked ones: overlapping, with the "
+    "direction flipping between subsamples. A clean reading is not evidence a source was "
+    "never upscaled. See docs/SPEC-FEEDBACK.md finding #16."
 )
 
 
@@ -164,6 +178,31 @@ def frame_metrics(gray: np.ndarray) -> dict:
                 hf_energy_ratio=hf_energy_ratio)
 
 
+def suggest_target(detail_px, container_height, multiplier=DEFAULT_DETAIL_MULTIPLIER):
+    """(target_height, raw_px, note) — a defensible upscale target, or
+    (None, None, None) when there is nothing measured to reason from.
+
+    `raw_px` is multiplier x measured detail; `target_height` snaps to the
+    largest standard tier **at or below** it. Snapping down rather than to the
+    nearest is deliberate: past ~2x measured detail an upscaler is inventing
+    rather than resolving, and the stated risk to avoid is over-application on
+    low-resolution originals. The raw figure is reported alongside so an
+    override upward is an informed one."""
+    if not detail_px or detail_px <= 0 or not container_height or container_height <= 0:
+        return None, None, None
+    raw = detail_px * multiplier
+    at_or_below = [h for h in STANDARD_HEIGHTS if h <= raw]
+    target = at_or_below[-1] if at_or_below else STANDARD_HEIGHTS[0]
+
+    if target <= container_height:
+        note = (f"already {container_height}p, and its measured detail only supports ~{target}p — "
+                f"an upscale would be cleanup, not added resolution")
+    else:
+        note = (f"{container_height}p container with ~{detail_px}p of real detail; "
+                f"~{target}p is supportable (x{target / container_height:.1f} on the container)")
+    return target, int(round(raw)), note
+
+
 @dataclasses.dataclass
 class CandidacyResult:
     source_path: str
@@ -177,6 +216,9 @@ class CandidacyResult:
     blocking: Optional[float]
     banding: Optional[float]
     hf_energy_ratio: Optional[float]
+    suggested_target_px: Optional[int]
+    raw_target_px: Optional[int]
+    target_note: Optional[str]
     thresholds: dict
     per_frame: list
     verdict: str
@@ -196,6 +238,7 @@ def _result(source_path, container_width, container_height, thresholds,
         frames_requested=0, frames_decoded=0, frames_usable=0,
         effective_resolution_ratio=None, effective_resolution_px=None,
         blocking=None, banding=None, hf_energy_ratio=None, per_frame=[],
+        suggested_target_px=None, raw_target_px=None, target_note=None,
     )
     defaults.update(counts)
     return CandidacyResult(
@@ -214,6 +257,7 @@ def default_thresholds(**overrides) -> dict:
         resolution_marginal=DEFAULT_RESOLUTION_MARGINAL,
         blocking_marginal=DEFAULT_BLOCKING_MARGINAL,
         banding_marginal=DEFAULT_BANDING_MARGINAL,
+        detail_multiplier=DEFAULT_DETAIL_MULTIPLIER,
     )
     t.update({k: v for k, v in overrides.items() if v is not None})
     return t
@@ -250,8 +294,12 @@ def _evaluate(source_path, container_width, container_height,
     hf = statistics.median(f["hf_energy_ratio"] for f in usable)
     eff_px = int(round(ratio * container_height))
 
+    target_px, raw_target_px, target_note = suggest_target(
+        eff_px, container_height, thresholds.get("detail_multiplier", DEFAULT_DETAIL_MULTIPLIER))
     counts.update(effective_resolution_ratio=ratio, effective_resolution_px=eff_px,
-                  blocking=blocking, banding=banding, hf_energy_ratio=hf)
+                  blocking=blocking, banding=banding, hf_energy_ratio=hf,
+                  suggested_target_px=target_px, raw_target_px=raw_target_px,
+                  target_note=target_note)
 
     denom = (f"over {len(usable)} usable frames of {frames_requested} sampled")
 
@@ -335,7 +383,9 @@ def summary_line(result: CandidacyResult) -> str:
         f"effective_resolution_ratio={result.effective_resolution_ratio} "
         f"container={result.container_width}x{result.container_height} "
         f"blocking={result.blocking} banding={result.banding} "
-        f"hf_energy_ratio={result.hf_energy_ratio} verdict={result.verdict}"
+        f"hf_energy_ratio={result.hf_energy_ratio} "
+        f"suggested_target_px={result.suggested_target_px} "
+        f"raw_target_px={result.raw_target_px} verdict={result.verdict}"
     )
 
 
@@ -361,6 +411,13 @@ def add_threshold_args(parser: argparse.ArgumentParser) -> None:
                               "bar, so it reports but does not gate; pass a number to re-enable)")
     parser.add_argument("--banding-marginal", type=float, default=None,
                          help="mild banding bar (default: OFF, as above)")
+    parser.add_argument("--detail-multiplier", type=float, default=None,
+                         help=f"how far past measured detail an upscale can be expected to resolve "
+                              f"rather than invent (default: {DEFAULT_DETAIL_MULTIPLIER}). The "
+                              f"suggested target is the largest standard tier at or below this "
+                              f"multiple of measured detail — derived from detail, never from the "
+                              f"container, so it can neither over-apply on a low-resolution original "
+                              f"nor explode a low-quality 8K input")
 
 
 def threshold_kwargs(args) -> dict:
@@ -371,6 +428,7 @@ def threshold_kwargs(args) -> dict:
         resolution_marginal=args.resolution_marginal,
         blocking_marginal=args.blocking_marginal,
         banding_marginal=args.banding_marginal,
+        detail_multiplier=args.detail_multiplier,
     )
 
 
