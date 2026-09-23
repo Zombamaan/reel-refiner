@@ -309,6 +309,14 @@ variety of a real clip has gone through yet. See `docs/MILESTONE-2-RESULTS.md`.
 
 **Resolved as history, not as a spec correction** — there is no defect here to fix. Recorded in §12's new milestone table, which states both built-partial tools' single shared cause (no real clip has run) and names the untested dimensions, with grain flagged as the one most likely to move a candidacy number.
 
+**Update:** a real clip has since run through `reel_upscale.py` — `scripts/survey_candidates.py` against
+the owner's full library (12,237 files, metadata only) picked a 10-bit HEVC 4K@120fps file,
+`reel_candidacy.py` confirmed it worth upscaling, and the wrapper passed end to end on `--device auto`.
+See `docs/MILESTONE-2-RESULTS.md`'s "Real clip" section. Build state is now **built**; the untested
+dimensions this single file doesn't cover (interlacing, multi-track/multi-language audio, odd
+containers, CPU-on-real-footage) are named there, same as the candidacy analyser remaining built on a
+sample rather than every file in the library.
+
 ### 15. `tvai_up` segfaults, rather than erroring cleanly, on fewer than 4 input frames
 
 **Spec says:** Nothing — no capture or spec text anticipates any `tvai_up` failure mode, clean or

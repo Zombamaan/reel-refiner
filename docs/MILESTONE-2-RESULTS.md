@@ -4,12 +4,12 @@ The numbers behind SPEC.md §7's upscale must-have and §8's encode-size Class A
 for the same reason `docs/MILESTONE-1-RESULTS.md` exists — this is the durable record, not console
 output from a session that's already over.
 
-**Build state: built-partial.** The pipe, the CRF encode, audio passthrough, and both denominator-rule
+**Build state: built.** The pipe, the CRF encode, audio passthrough, and both denominator-rule
 gates (`upscale_verify.py`'s truncation and size-ratio checks) are all proven against real ffmpeg
-processes and a real file. What hasn't run is an actual real-world clip — real codecs, interlacing,
-unusual pixel formats, multi-track or multi-language audio. See `docs/SPEC-FEEDBACK.md` finding #14
-for why (no video clip exists anywhere in this repo's `samples/`) and the "Real clip" section below for
-what running one would look like.
+processes, and, as of the "Real clip" section below, against a real file from the owner's own library —
+the same evidentiary bar `docs/MILESTONE-1-RESULTS.md` used to call the subtitle path built. See
+`docs/SPEC-FEEDBACK.md` finding #14 for why the synthetic clip was needed first (no video clip existed
+anywhere in this repo's `samples/`).
 
 ## What Topaz's own ffmpeg can and can't do (`docs/SPEC-FEEDBACK.md` finding #10)
 
@@ -236,11 +236,49 @@ python reel_upscale.py samples/degraded/source.mp4 --model ahq-12 --scale 4 --cr
   `--encoder libsvtav1 --crf 30` (its default preset `6`) encoded the same clip to 1,737,193 bytes,
   3.90× source.
 
-## Real clip — not yet run
+## Real clip — run against the owner's library
 
-This milestone's synthetic clip proves the mechanism (the pipe, the CRF encode, both gates, audio
-passthrough) but not the tool against actual footage. When a real, heavily-compressed clip is
-available: `python reel_upscale.py <path> --model <owner's choice> --crf 20`, no `--out` needed for a
-real clip either (writes next to the input). Update this document's build state to **built** once
-that's run and the "Reading these numbers" caveat above is either confirmed or corrected against real
-content.
+Candidate chosen from `scripts/survey_candidates.py` run against all three of the owner's collections
+(`D:\Funscript Videos`, `D:\MultiAxis Videos`, `E:\Main Stash` — 12,237 files, metadata only, nothing
+written into the library; saved to `out/candidate_survey.txt`, git-ignored). `reel_candidacy.py`
+confirmed the pick as **worth upscaling** first (detail ~768p inside a 2160p container, 36%).
+
+Real file: `E:\Main Stash\Animations\The Count\D.Va 01b (19.10).mp4` — 3840x2160, HEVC Main10 (10-bit),
+120fps, 9.42s (1,130 frames), AAC audio plus an attached-picture (cover art) stream, 4,391,623 bytes.
+Not synthetic, not from `samples/`, and never modified by the run (checksum confirmed before/after).
+
+```
+python reel_upscale.py "E:\Main Stash\Animations\The Count\D.Va 01b (19.10).mp4" --model ahq-12 --scale 2 --crf 20
+```
+
+| | Result |
+|---|---|
+| Device | auto (GPU) |
+| Wall time | 478.1s (~8 min) |
+| Verify exit | 0 (pass) |
+| Output size | 9,304,369 B — **2.12x** source (well under the 5.0x default gate) |
+| Duration | 9.416667s output vs 9.416s source |
+| Frames | 1,130 vs 1,130 (exact match) |
+| Output resolution | 7680x4320 (scale=2 of 3840x2160) |
+
+The GPU pass alone took 8 minutes for a 9.42s clip — 120fps meant 1,130 frames to upscale-and-encode at
+8K, not the handful the duration alone suggests; `libx265 -crf 20` at 8K is the bottleneck (2.4 fps
+encode speed at the end of the run). A `--device cpu` pass on this same file was not attempted: at the
+observed ~20x GPU-vs-CPU gap this milestone already established on the synthetic clip, CPU would cost
+on the order of hours for one 8K file — not a proportionate cost to re-confirm a fallback path already
+proven working. CPU-on-real-footage remains unexercised; general CPU fallback does not.
+
+Two real-world behaviors observed here for the first time, both expected rather than defects:
+- **10-bit source, silently 8-bit output.** The source is HEVC Main10; this run used the default
+  `--pix-fmt yuv420p`, so the output is 8-bit. `--pix-fmt yuv420p10le` preserves it — documented in the
+  flag's own `--help` text, just not previously exercised against a real 10-bit file.
+- **The attached-picture (cover art) stream is dropped**, not carried through. Consistent with finding
+  #13's `-map 1:a?` (audio streams only) — an attached picture is an image-coded video stream in
+  ffmpeg's model, so it was never in scope of that mapping. Not a defect, just the first real file to
+  actually carry one.
+
+Real-world dimensions this single file does **not** cover — interlacing, multi-track or
+multi-language audio, non-AAC audio codecs, odd containers (`.wmv`/`.mpeg`/`.ts`), variable frame rate —
+remain unexercised for the upscale wrapper specifically, same as milestone 3's candidacy analyser
+remaining built on 113-of-12,237 files rather than every one. `out/candidate_survey.txt` has real
+examples of each dimension if a targeted follow-up spot-check is ever wanted.

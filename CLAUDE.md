@@ -42,14 +42,17 @@ the GPU risk below is untested, and proving it either way de-risks everything el
 real clip — see `docs/MILESTONE-1-RESULTS.md` for the numbers and `docs/SPEC-FEEDBACK.md` for what
 building it found wrong with the spec.
 
-**Status, upscale wrapper: built-partial.** `reel_upscale.py` pipes Topaz's `tvai_up` into a
+**Status, upscale wrapper: built.** `reel_upscale.py` pipes Topaz's `tvai_up` into a
 system-ffmpeg CRF encode (Topaz's own bundled ffmpeg has no software H.265/AV1 encoder — see
 `docs/SPEC-FEEDBACK.md` finding #10), with the §8 encode-size check (`upscale_verify.py`) and its own
 denominator rule (truncation + size-ratio gates, both exercised). Verified end to end on both
-`--device cuda`/`auto` and `--device cpu` — see `docs/MILESTONE-2-RESULTS.md`. Partial because no real
-clip has gone through yet: no video clip exists in this repo's `samples/`, so verification used a
-synthetically generated degraded clip instead. Findings #10–#15 in `docs/SPEC-FEEDBACK.md` are what
-building it found wrong with or missing from the spec.
+`--device cuda`/`auto` and `--device cpu` against a synthetic clip (no video clip existed in this
+repo's `samples/`), and since against a real 10-bit HEVC 4K@120fps file from the owner's library on
+`--device auto` — see `docs/MILESTONE-2-RESULTS.md`. CPU-on-real-footage and a handful of real-world
+dimensions (interlacing, multi-track/multi-language audio, odd containers) remain unexercised for this
+tool specifically; `out/candidate_survey.txt` has real examples of each if a spot-check is ever wanted.
+Findings #10–#15 in `docs/SPEC-FEEDBACK.md` are what building it found wrong with or missing from the
+spec.
 
 **Status, candidacy analyser: built.** `reel_candidacy.py` samples frames across a source and
 computes §8's three metrics (`candidacy_verify.py`) — an effective-resolution estimate, blocking and
