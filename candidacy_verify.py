@@ -86,6 +86,11 @@ DEFAULT_BLOCKING_MARGINAL = 1.25      # real: median=1.13
 DEFAULT_BANDING_WORTH = None
 DEFAULT_BANDING_MARGINAL = None
 
+# Used only to decide whether a "not worth" verdict may describe banding as
+# near clean. Banding does not gate, so it can be any value on that path, and
+# the verdict text must not call a measured 21.50 "clean".
+_BANDING_CLEAN_REFERENCE = 1.5
+
 # Target suggestion. Derived from *measured detail*, never from the container
 # — which is the whole point. Deriving from the container fails in both
 # directions: a flat 4K target over-applies on a low-resolution original, and
@@ -183,7 +188,10 @@ def suggest_target(detail_px, container_height, multiplier=DEFAULT_DETAIL_MULTIP
     (None, None, None) when there is nothing measured to reason from.
 
     `raw_px` is multiplier x measured detail; `target_height` snaps to the
-    largest standard tier **at or below** it. Snapping down rather than to the
+    largest standard tier **at or below** it — with one exception, called out
+    in the note when it happens: if raw falls below the smallest standard tier
+    (480p), that tier is returned as a floor and the note says the measured
+    detail supports less. Snapping down rather than to the
     nearest is deliberate: past ~2x measured detail an upscaler is inventing
     rather than resolving, and the stated risk to avoid is over-application on
     low-resolution originals. The raw figure is reported alongside so an
@@ -192,7 +200,19 @@ def suggest_target(detail_px, container_height, multiplier=DEFAULT_DETAIL_MULTIP
         return None, None, None
     raw = detail_px * multiplier
     at_or_below = [h for h in STANDARD_HEIGHTS if h <= raw]
-    target = at_or_below[-1] if at_or_below else STANDARD_HEIGHTS[0]
+    if at_or_below:
+        target, below_floor = at_or_below[-1], False
+    else:
+        # Below the smallest standard tier. 480p is a floor rather than an
+        # invented non-standard target — but this is the one case where the
+        # snap goes *up*, so it must say so instead of quietly overstating
+        # what the detail supports.
+        target, below_floor = STANDARD_HEIGHTS[0], True
+
+    if below_floor:
+        note = (f"measured detail supports only ~{int(round(raw))}p, below the smallest standard "
+                f"tier — {target}p is a floor, not a recommendation; this source is very soft")
+        return target, int(round(raw)), note
 
     if target <= container_height:
         note = (f"already {container_height}p, and its measured detail only supports ~{target}p — "
@@ -341,8 +361,18 @@ def _evaluate(source_path, container_width, container_height,
                        " — some headroom, but modest; your call whether the hours are worth it",
                        reasons=reasons, **counts)
 
+    # Reaching here means blocking cleared its marginal bar, so calling it
+    # clean is safe. Banding did NOT clear anything — it does not gate by
+    # default — so it can be arbitrarily high at this point. Claiming it is
+    # "near clean" while printing 21.50 beside it is exactly the "clean" and
+    # "examined nothing" collision CLAUDE.md's rule forbids.
     reasons = [f"resolution is honest ({eff_px}p of {container_height}p, {ratio * 100:.0f}%)",
-               f"blocking {blocking:.2f} and banding {banding:.2f} are both near clean"]
+               f"blocking {blocking:.2f} is near clean"]
+    if banding <= _BANDING_CLEAN_REFERENCE:
+        reasons.append(f"banding {banding:.2f} is near clean")
+    else:
+        reasons.append(f"banding {banding:.2f} is elevated but does not gate by default "
+                       f"(diagnostic only — pass --banding-worth to make it count)")
     return _result(source_path, container_width, container_height, thresholds, 4, "not worth",
                    f"not worth upscaling ({denom}): " + "; ".join(reasons) +
                    " — little headroom for an upscale to recover",

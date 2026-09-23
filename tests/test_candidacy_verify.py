@@ -322,6 +322,41 @@ def test_target_reaches_the_result_and_survives_a_broken_run():
     assert broken.suggested_target_px is None  # nothing measured, nothing suggested
 
 
+def test_not_worth_never_calls_elevated_banding_clean():
+    """Banding does not gate, so it can be arbitrarily high on the "not
+    worth" path. The verdict text must not describe a measured 21.50 as
+    "near clean" while printing it — that is the "clean" / "examined
+    nothing" collision CLAUDE.md's rule forbids, in miniature."""
+    r = evaluate([frame(banding=21.5)] * 5)
+    assert r.exit_code == 4
+    assert r.banding == 21.5
+    joined = " ".join(r.reasons).lower()
+    assert "banding 21.50 is near clean" not in joined
+    assert "elevated" in joined
+    # and a genuinely clean value is still allowed to say so
+    clean = evaluate([frame(banding=1.05)] * 5)
+    assert "banding 1.05 is near clean" in " ".join(clean.reasons).lower()
+
+
+def test_target_floor_is_flagged_rather_than_silently_snapping_up():
+    """The one case where the snap goes up: raw below the smallest standard
+    tier. It must say the detail supports less, not quietly overstate."""
+    target, raw, note = suggest_target(detail_px=200, container_height=240)
+    assert target == 480
+    assert raw == 400
+    assert target > raw                      # the documented exception
+    assert "floor, not a recommendation" in note
+    assert "supports only ~400p" in note
+
+
+def test_target_snap_down_holds_everywhere_above_the_floor():
+    """The invariant the previous test carves out an exception to — checked
+    across the range where it must hold, including just above the floor."""
+    for detail in (245, 300, 500, 900, 1500, 2500):
+        target, raw, _ = suggest_target(detail_px=detail, container_height=1080)
+        assert target <= raw, f"detail={detail}: target {target} exceeded raw {raw}"
+
+
 def test_denominators_and_caveat_reported_on_every_code_path():
     cases = [
         [frame(ratio=0.30)] * 3,       # worth

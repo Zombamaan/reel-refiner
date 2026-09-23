@@ -18,9 +18,11 @@ hard thresholds at all — the report text can hedge, an exit code cannot.
 Every threshold is a flag whose default is annotated with the measurement it
 came from; none was guessed (docs/SPEC-FEEDBACK.md finding #17).
 
-**What this tool cannot do**, stated on every run rather than buried: the
-effective-resolution metric catches conventional stretched upscales, not AI
-ones. See candidacy_verify.CAVEAT and docs/SPEC-FEEDBACK.md finding #16.
+**What this tool cannot do**, stated on every run rather than buried: it
+measures detail relative to the container, and cannot tell you a file was
+upscaled before. Across 113 real files the upscale-marked and unmarked groups
+overlap, with the direction flipping between subsamples. See
+candidacy_verify.CAVEAT and docs/SPEC-FEEDBACK.md finding #16.
 
 Frames are sampled with fast seeks (-ss before -i) at evenly spaced
 timestamps, skipping the first and last 5% so a black intro or outro doesn't
@@ -210,8 +212,9 @@ def render_report(result, info: dict, elapsed: float) -> str:
         lines += [
             f"  effective_resolution   ~{result.effective_resolution_px}p of "
             f"{result.container_height}p  ({result.effective_resolution_ratio * 100:.0f}% of container)",
-            f"  blocking_score         {result.blocking:.2f}   (clean content ~1.0)",
-            f"  banding_score          {result.banding:.2f}   (clean content ~1.0)",
+            f"  blocking_score         {result.blocking:.2f}   (real-world median ~1.13)",
+            f"  banding_score          {result.banding:.2f}   (real-world median ~1.16; "
+            f"does not gate)",
             f"  hf_energy_ratio        {result.hf_energy_ratio:.3e}",
             "",
         ]
@@ -235,9 +238,9 @@ def render_report(result, info: dict, elapsed: float) -> str:
     # first made that read as a contradiction.
     if result.suggested_target_px:
         lines += [
-            f"SUGGESTED TARGET: {result.suggested_target_px}p"
-            f"  — how far the measured detail could be taken, which is a",
-            "                        different question from the verdict above",
+            f"SUGGESTED TARGET: {result.suggested_target_px}p",
+            "  how far the measured detail could be taken — a different question",
+            "  from the verdict above, and the two can point opposite ways",
             f"  {result.target_note}",
             f"  (derived from measured detail, never the container: "
             f"{result.thresholds.get('detail_multiplier')}x {result.effective_resolution_px}p "
